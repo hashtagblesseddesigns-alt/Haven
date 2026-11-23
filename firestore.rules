@@ -1,0 +1,255 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        ('email_verified' in request.auth.token &&
+         request.auth.token.email_verified == true &&
+         'email' in request.auth.token &&
+         request.auth.token.email == 'josheezymusic@gmail.com')
+      );
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidTimestamp(ts) {
+      return ts is timestamp && ts <= request.time;
+    }
+
+    function isValidCurrency(c) {
+      return c in ['USD', 'EUR', 'GBP', 'JPY', 'CAD'];
+    }
+
+    // --- Validation Blueprints ---
+
+    function isValidUserProfile(data, userId) {
+      return data.userId is string && data.userId == userId &&
+             data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 80 &&
+             data.role in ['CLIENT', 'COMPANION'] &&
+             data.verificationStatus in ['STANDARD', 'VERIFIED_2FA'] &&
+             isValidCurrency(data.preferredCurrency) &&
+             (!('wellnessFocus' in data) || (data.wellnessFocus is string && data.wellnessFocus.size() <= 300)) &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidMatchScore(data, userId) {
+      return data.userId is string && data.userId == userId &&
+             data.companionId is string && isValidId(data.companionId) &&
+             data.companionName is string && data.companionName.size() >= 1 && data.companionName.size() <= 80 &&
+             data.compatibilityScore is int && data.compatibilityScore >= 0 && data.compatibilityScore <= 100 &&
+             data.rationale is string && data.rationale.size() >= 1 && data.rationale.size() <= 600 &&
+             data.recommendedFormat is string && data.recommendedFormat.size() >= 1 && data.recommendedFormat.size() <= 120 &&
+             data.bookmarked is bool &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidSessionBooking(data, userId) {
+      return data.userId is string && data.userId == userId &&
+             data.companionId is string && isValidId(data.companionId) &&
+             data.companionName is string && data.companionName.size() >= 1 && data.companionName.size() <= 80 &&
+             data.sessionTitle is string && data.sessionTitle.size() >= 1 && data.sessionTitle.size() <= 140 &&
+             data.durationMinutes is int && data.durationMinutes >= 15 && data.durationMinutes <= 480 &&
+             isValidCurrency(data.currency) &&
+             data.grossCentsUsd is int && data.grossCentsUsd >= 0 && data.grossCentsUsd <= 10000000 &&
+             data.taxWithheldCentsUsd is int && data.taxWithheldCentsUsd >= 0 && data.taxWithheldCentsUsd <= data.grossCentsUsd &&
+             data.status in ['CONFIRMED', 'IN_SESSION', 'COMPLETED', 'PAYOUT_REQUESTED'] &&
+             data.scheduledLabel is string && data.scheduledLabel.size() >= 1 && data.scheduledLabel.size() <= 80 &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidEncryptedMessage(data, userId) {
+      return data.userId is string && data.userId == userId &&
+             data.companionId is string && isValidId(data.companionId) &&
+             data.companionName is string && data.companionName.size() >= 1 && data.companionName.size() <= 80 &&
+             data.senderRole in ['USER', 'COMPANION'] &&
+             data.cipherText is string && data.cipherText.size() >= 1 && data.cipherText.size() <= 4000 &&
+             data.ivBase64 is string && data.ivBase64.size() >= 8 && data.ivBase64.size() <= 128 &&
+             data.keyFingerprint is string && data.keyFingerprint.size() >= 4 && data.keyFingerprint.size() <= 128 &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidEoaAgentRun(data, userId) {
+      return data.userId is string && data.userId == userId &&
+             data.directive is string && data.directive.size() >= 1 && data.directive.size() <= 500 &&
+             data.eoaSummary is string && data.eoaSummary.size() >= 1 && data.eoaSummary.size() <= 2000 &&
+             data.overallHealthScore is int && data.overallHealthScore >= 0 && data.overallHealthScore <= 100 &&
+             data.fraudRiskLevel in ['LOW', 'MEDIUM', 'HIGH'] &&
+             data.activeAlertsCount is int && data.activeAlertsCount >= 0 && data.activeAlertsCount <= 500 &&
+             data.matchmakerScore is int && data.matchmakerScore >= 0 && data.matchmakerScore <= 100 &&
+             data.fraudSentinelScore is int && data.fraudSentinelScore >= 0 && data.fraudSentinelScore <= 100 &&
+             data.taxAgentScore is int && data.taxAgentScore >= 0 && data.taxAgentScore <= 100 &&
+             data.cryptoGuardianScore is int && data.cryptoGuardianScore >= 0 && data.cryptoGuardianScore <= 100 &&
+             data.infraBalancerScore is int && data.infraBalancerScore >= 0 && data.infraBalancerScore <= 100 &&
+             data.recommendedAction is string && data.recommendedAction.size() >= 1 && data.recommendedAction.size() <= 400 &&
+             data.latencyMs is int && data.latencyMs >= 0 && data.latencyMs <= 120000 &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidActivityLog(data, userId) {
+      return data.userId is string && data.userId == userId &&
+             data.category in ['AUTH', 'BOOKING', 'CIPHER', 'EOA_AUDIT', 'TAX_REPORT', 'FRAUD_SCAN'] &&
+             data.title is string && data.title.size() >= 1 && data.title.size() <= 160 &&
+             data.detail is string && data.detail.size() >= 1 && data.detail.size() <= 500 &&
+             data.severity in ['INFO', 'WARN', 'CRITICAL'] &&
+             isValidTimestamp(data.createdAt);
+    }
+
+    // --- Admin Registry (read-only from client SDKs) ---
+    match /admins/{adminId} {
+      allow get: if isSignedIn() && request.auth.uid == adminId;
+      allow list, write: if false;
+    }
+
+    // --- User Profiles & Scoped Subcollections ---
+    match /users/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isAdmin();
+
+      allow create: if isValidId(userId) &&
+                       (isOwner(userId) || isAdmin()) &&
+                       incoming().keys().hasAll(['userId', 'displayName', 'role', 'verificationStatus', 'preferredCurrency', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['userId', 'displayName', 'role', 'verificationStatus', 'preferredCurrency', 'wellnessFocus', 'createdAt', 'updatedAt']) &&
+                       isValidUserProfile(incoming(), userId);
+
+      allow update: if isValidId(userId) &&
+                       (isOwner(userId) || isAdmin()) &&
+                       isValidUserProfile(incoming(), userId) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'role', 'verificationStatus', 'preferredCurrency', 'wellnessFocus', 'updatedAt']);
+
+      allow delete: if isValidId(userId) && (isOwner(userId) || isAdmin());
+
+      // AI Matchmaking Scores & Bookmarks
+      match /matches/{companionId} {
+        allow get: if isValidId(userId) && isValidId(companionId) && (isOwner(userId) || isAdmin());
+        allow list: if isOwner(userId) || isAdmin();
+
+        allow create: if isValidId(userId) && isValidId(companionId) &&
+                         (isOwner(userId) || isAdmin()) &&
+                         incoming().keys().hasAll(['userId', 'companionId', 'companionName', 'compatibilityScore', 'rationale', 'recommendedFormat', 'bookmarked', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['userId', 'companionId', 'companionName', 'compatibilityScore', 'rationale', 'recommendedFormat', 'bookmarked', 'createdAt', 'updatedAt']) &&
+                         isValidMatchScore(incoming(), userId);
+
+        allow update: if isValidId(userId) && isValidId(companionId) &&
+                         (isOwner(userId) || isAdmin()) &&
+                         isValidMatchScore(incoming(), userId) &&
+                         incoming().userId == existing().userId &&
+                         incoming().companionId == existing().companionId &&
+                         incoming().createdAt == existing().createdAt &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['companionName', 'compatibilityScore', 'rationale', 'recommendedFormat', 'bookmarked', 'updatedAt']);
+
+        allow delete: if isValidId(userId) && isValidId(companionId) && (isOwner(userId) || isAdmin());
+      }
+
+      // Wellness Session Bookings & Multi-Currency Ledger
+      match /bookings/{bookingId} {
+        allow get: if isValidId(userId) && isValidId(bookingId) && (isOwner(userId) || isAdmin());
+        allow list: if isOwner(userId) || isAdmin();
+
+        allow create: if isValidId(userId) && isValidId(bookingId) &&
+                         (isOwner(userId) || isAdmin()) &&
+                         incoming().keys().hasAll(['userId', 'companionId', 'companionName', 'sessionTitle', 'durationMinutes', 'currency', 'grossCentsUsd', 'taxWithheldCentsUsd', 'status', 'scheduledLabel', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['userId', 'companionId', 'companionName', 'sessionTitle', 'durationMinutes', 'currency', 'grossCentsUsd', 'taxWithheldCentsUsd', 'status', 'scheduledLabel', 'createdAt', 'updatedAt']) &&
+                         isValidSessionBooking(incoming(), userId);
+
+        allow update: if isValidId(userId) && isValidId(bookingId) &&
+                         (isOwner(userId) || isAdmin()) &&
+                         isValidSessionBooking(incoming(), userId) &&
+                         incoming().userId == existing().userId &&
+                         incoming().companionId == existing().companionId &&
+                         incoming().createdAt == existing().createdAt &&
+                         (isAdmin() || (
+                           existing().status != 'PAYOUT_REQUESTED' &&
+                           incoming().diff(existing()).affectedKeys().hasOnly(['status', 'currency', 'updatedAt'])
+                         ));
+
+        allow delete: if isValidId(userId) && isValidId(bookingId) && (isOwner(userId) || isAdmin());
+      }
+
+      // AES-256-GCM Encrypted Messages
+      match /messages/{messageId} {
+        allow get: if isValidId(userId) && isValidId(messageId) && (isOwner(userId) || isAdmin());
+        allow list: if isOwner(userId) || isAdmin();
+
+        allow create: if isValidId(userId) && isValidId(messageId) &&
+                         (isOwner(userId) || isAdmin()) &&
+                         incoming().keys().hasAll(['userId', 'companionId', 'companionName', 'senderRole', 'cipherText', 'ivBase64', 'keyFingerprint', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['userId', 'companionId', 'companionName', 'senderRole', 'cipherText', 'ivBase64', 'keyFingerprint', 'createdAt', 'updatedAt']) &&
+                         isValidEncryptedMessage(incoming(), userId);
+
+        allow update: if isValidId(userId) && isValidId(messageId) &&
+                         (isOwner(userId) || isAdmin()) &&
+                         isValidEncryptedMessage(incoming(), userId) &&
+                         incoming().userId == existing().userId &&
+                         incoming().createdAt == existing().createdAt &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['cipherText', 'ivBase64', 'updatedAt']);
+
+        allow delete: if isValidId(userId) && isValidId(messageId) && (isOwner(userId) || isAdmin());
+      }
+
+      // EOA & Sub-Agent Performance Telemetry Runs
+      match /agentRuns/{runId} {
+        allow get: if isValidId(userId) && isValidId(runId) && (isOwner(userId) || isAdmin());
+        allow list: if isOwner(userId) || isAdmin();
+
+        allow create: if isValidId(userId) && isValidId(runId) &&
+                         (isOwner(userId) || isAdmin()) &&
+                         incoming().keys().hasAll(['userId', 'directive', 'eoaSummary', 'overallHealthScore', 'fraudRiskLevel', 'activeAlertsCount', 'matchmakerScore', 'fraudSentinelScore', 'taxAgentScore', 'cryptoGuardianScore', 'infraBalancerScore', 'recommendedAction', 'latencyMs', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['userId', 'directive', 'eoaSummary', 'overallHealthScore', 'fraudRiskLevel', 'activeAlertsCount', 'matchmakerScore', 'fraudSentinelScore', 'taxAgentScore', 'cryptoGuardianScore', 'infraBalancerScore', 'recommendedAction', 'latencyMs', 'createdAt', 'updatedAt']) &&
+                         isValidEoaAgentRun(incoming(), userId);
+
+        allow update: if isValidId(userId) && isValidId(runId) &&
+                         isAdmin() &&
+                         isValidEoaAgentRun(incoming(), userId) &&
+                         incoming().userId == existing().userId &&
+                         incoming().createdAt == existing().createdAt;
+
+        allow delete: if isValidId(userId) && isValidId(runId) && (isOwner(userId) || isAdmin());
+      }
+
+      // Immutable Real-Time Activity & Compliance Audit Logs
+      match /activityLogs/{logId} {
+        allow get: if isValidId(userId) && isValidId(logId) && (isOwner(userId) || isAdmin());
+        allow list: if isOwner(userId) || isAdmin();
+
+        allow create: if isValidId(userId) && isValidId(logId) &&
+                         (isOwner(userId) || isAdmin()) &&
+                         incoming().keys().hasAll(['userId', 'category', 'title', 'detail', 'severity', 'createdAt']) &&
+                         incoming().keys().hasOnly(['userId', 'category', 'title', 'detail', 'severity', 'createdAt']) &&
+                         isValidActivityLog(incoming(), userId);
+
+        allow update, delete: if isValidId(userId) && isValidId(logId) && isAdmin();
+      }
+    }
+  }
+}

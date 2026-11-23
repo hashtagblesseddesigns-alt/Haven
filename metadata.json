@@ -1,0 +1,6 @@
+{
+  "name": "Havenly",
+  "description": "Verified platonic wellness companionship, encrypted messaging, session earnings tracking, and EOA sub-agent telemetry.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

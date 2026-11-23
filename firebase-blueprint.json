@@ -1,0 +1,137 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Verified member profile with 2FA shield status, preferred currency, and matchmaking mood preferences.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Firebase Auth UID of the user." },
+        "displayName": { "type": "string", "description": "Public display name." },
+        "role": { "type": "string", "enum": ["CLIENT", "COMPANION"], "description": "User workspace role." },
+        "verificationStatus": { "type": "string", "enum": ["STANDARD", "VERIFIED_2FA"], "description": "Identity & 2FA verification tier." },
+        "preferredCurrency": { "type": "string", "enum": ["USD", "EUR", "GBP", "JPY", "CAD"], "description": "Display currency for session rates and earnings." },
+        "wellnessFocus": { "type": "string", "description": "User wellness companionship preferences for AI matchmaking." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp on creation." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp on update." }
+      },
+      "required": ["userId", "displayName", "role", "verificationStatus", "preferredCurrency", "createdAt", "updatedAt"]
+    },
+    "MatchScore": {
+      "title": "MatchScore",
+      "description": "AI-computed compatibility ranking for a verified companion.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "companionId": { "type": "string" },
+        "companionName": { "type": "string" },
+        "compatibilityScore": { "type": "integer" },
+        "rationale": { "type": "string" },
+        "recommendedFormat": { "type": "string" },
+        "bookmarked": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "companionId", "companionName", "compatibilityScore", "rationale", "recommendedFormat", "bookmarked", "createdAt", "updatedAt"]
+    },
+    "SessionBooking": {
+      "title": "SessionBooking",
+      "description": "Platonic wellness companionship session booking and multi-currency earnings/tax ledger entry.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "companionId": { "type": "string" },
+        "companionName": { "type": "string" },
+        "sessionTitle": { "type": "string" },
+        "durationMinutes": { "type": "integer" },
+        "currency": { "type": "string", "enum": ["USD", "EUR", "GBP", "JPY", "CAD"] },
+        "grossCentsUsd": { "type": "integer" },
+        "taxWithheldCentsUsd": { "type": "integer" },
+        "status": { "type": "string", "enum": ["CONFIRMED", "IN_SESSION", "COMPLETED", "PAYOUT_REQUESTED"] },
+        "scheduledLabel": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "companionId", "companionName", "sessionTitle", "durationMinutes", "currency", "grossCentsUsd", "taxWithheldCentsUsd", "status", "scheduledLabel", "createdAt", "updatedAt"]
+    },
+    "EncryptedMessage": {
+      "title": "EncryptedMessage",
+      "description": "AES-256-GCM encrypted message payload in a verified companion conversation.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "companionId": { "type": "string" },
+        "companionName": { "type": "string" },
+        "senderRole": { "type": "string", "enum": ["USER", "COMPANION"] },
+        "cipherText": { "type": "string" },
+        "ivBase64": { "type": "string" },
+        "keyFingerprint": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "companionId", "companionName", "senderRole", "cipherText", "ivBase64", "keyFingerprint", "createdAt", "updatedAt"]
+    },
+    "EoaAgentRun": {
+      "title": "EoaAgentRun",
+      "description": "Executive Orchestrator Agent (EOA) audit run and sub-agent performance telemetry snapshot.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "directive": { "type": "string" },
+        "eoaSummary": { "type": "string" },
+        "overallHealthScore": { "type": "integer" },
+        "fraudRiskLevel": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH"] },
+        "activeAlertsCount": { "type": "integer" },
+        "matchmakerScore": { "type": "integer" },
+        "fraudSentinelScore": { "type": "integer" },
+        "taxAgentScore": { "type": "integer" },
+        "cryptoGuardianScore": { "type": "integer" },
+        "infraBalancerScore": { "type": "integer" },
+        "recommendedAction": { "type": "string" },
+        "latencyMs": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "directive", "eoaSummary", "overallHealthScore", "fraudRiskLevel", "activeAlertsCount", "matchmakerScore", "fraudSentinelScore", "taxAgentScore", "cryptoGuardianScore", "infraBalancerScore", "recommendedAction", "latencyMs", "createdAt", "updatedAt"]
+    },
+    "ActivityAuditLog": {
+      "title": "ActivityAuditLog",
+      "description": "Immutable real-time activity and compliance audit entry.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "category": { "type": "string", "enum": ["AUTH", "BOOKING", "CIPHER", "EOA_AUDIT", "TAX_REPORT", "FRAUD_SCAN"] },
+        "title": { "type": "string" },
+        "detail": { "type": "string" },
+        "severity": { "type": "string", "enum": ["INFO", "WARN", "CRITICAL"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "category", "title", "detail", "severity", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Authenticated user profile and 2FA verification status."
+    },
+    "/users/{userId}/matches/{companionId}": {
+      "schema": { "$ref": "#/entities/MatchScore" },
+      "description": "AI-generated companion compatibility scores and bookmarks."
+    },
+    "/users/{userId}/bookings/{bookingId}": {
+      "schema": { "$ref": "#/entities/SessionBooking" },
+      "description": "User wellness session bookings and multi-currency earnings/tax ledger."
+    },
+    "/users/{userId}/messages/{messageId}": {
+      "schema": { "$ref": "#/entities/EncryptedMessage" },
+      "description": "AES-256-GCM encrypted message thread items."
+    },
+    "/users/{userId}/agentRuns/{runId}": {
+      "schema": { "$ref": "#/entities/EoaAgentRun" },
+      "description": "EOA and 5 sub-agent orchestration telemetry snapshots."
+    },
+    "/users/{userId}/activityLogs/{logId}": {
+      "schema": { "$ref": "#/entities/ActivityAuditLog" },
+      "description": "Real-time verified user activity and security audit logs."
+    }
+  }
+}
