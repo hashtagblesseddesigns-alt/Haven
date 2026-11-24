@@ -134,6 +134,9 @@ class HavenlyViewModel(
     private val _taxReportState = MutableStateFlow<AiTaskState>(AiTaskState.Idle)
     val taxReportState: StateFlow<AiTaskState> = _taxReportState.asStateFlow()
 
+    private val _profileSaveState = MutableStateFlow<AiTaskState>(AiTaskState.Idle)
+    val profileSaveState: StateFlow<AiTaskState> = _profileSaveState.asStateFlow()
+
     private val _bannerFeedback = MutableStateFlow<String?>(null)
     val bannerFeedback: StateFlow<String?> = _bannerFeedback.asStateFlow()
 
@@ -190,6 +193,65 @@ class HavenlyViewModel(
             repository.updateUserProfile(preferredCurrency = currency).onFailure {
                 _bannerFeedback.value = it.localizedMessage ?: "Failed to update currency."
             }
+        }
+    }
+
+    fun showBannerMessage(message: String) {
+        _bannerFeedback.value = message
+    }
+
+    fun updateProfileDetails(displayName: String, wellnessFocus: String) {
+        val cleanName = displayName.trim().take(80)
+        if (cleanName.isEmpty()) {
+            _profileSaveState.value = AiTaskState.Error("Please enter a display name.")
+            return
+        }
+        val cleanFocus = wellnessFocus.trim().take(300)
+        viewModelScope.launch {
+            _profileSaveState.value = AiTaskState.Running
+            repository.updateUserProfile(
+                displayName = cleanName,
+                wellnessFocus = cleanFocus.ifEmpty { null }
+            ).onSuccess {
+                _profileSaveState.value = AiTaskState.Success("Profile saved for $cleanName.")
+                _bannerFeedback.value = "Display name & profile saved."
+            }.onFailure { err ->
+                val msg = err.localizedMessage ?: "Failed to save profile."
+                _profileSaveState.value = AiTaskState.Error(msg)
+                _bannerFeedback.value = msg
+            }
+        }
+    }
+
+    fun updateProfileAvatar(avatarBase64: String) {
+        viewModelScope.launch {
+            _profileSaveState.value = AiTaskState.Running
+            repository.updateUserProfile(avatarBase64 = avatarBase64)
+                .onSuccess {
+                    _profileSaveState.value = AiTaskState.Success("Profile picture updated.")
+                    _bannerFeedback.value = "Profile picture updated."
+                }
+                .onFailure { err ->
+                    val msg = err.localizedMessage ?: "Failed to upload profile picture."
+                    _profileSaveState.value = AiTaskState.Error(msg)
+                    _bannerFeedback.value = msg
+                }
+        }
+    }
+
+    fun removeProfileAvatar() {
+        viewModelScope.launch {
+            _profileSaveState.value = AiTaskState.Running
+            repository.updateUserProfile(avatarBase64 = "")
+                .onSuccess {
+                    _profileSaveState.value = AiTaskState.Success("Profile picture removed.")
+                    _bannerFeedback.value = "Profile picture removed."
+                }
+                .onFailure { err ->
+                    val msg = err.localizedMessage ?: "Failed to remove profile picture."
+                    _profileSaveState.value = AiTaskState.Error(msg)
+                    _bannerFeedback.value = msg
+                }
         }
     }
 

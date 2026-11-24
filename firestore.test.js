@@ -91,11 +91,21 @@ test("Owner UserProfile: valid Kotlin create & update succeed; ghost fields & cr
     })
   );
 
-  // Valid partial update
+  // Valid partial update including displayName and avatarBase64
   await assertSucceeds(
     aliceDb.collection("users").doc(ALICE_UID).update({
+      displayName: "Alice Moreau",
+      avatarBase64: "/9j/4AAQSkZJRgABAQAAAQABAAD/",
       verificationStatus: "VERIFIED_2FA",
       preferredCurrency: "EUR",
+      updatedAt: new Date(Date.now() - 1000),
+    })
+  );
+
+  // Oversized avatarBase64 (> 80,000 chars) rejected
+  await assertFails(
+    aliceDb.collection("users").doc(ALICE_UID).update({
+      avatarBase64: "A".repeat(80001),
       updatedAt: new Date(Date.now() - 1000),
     })
   );

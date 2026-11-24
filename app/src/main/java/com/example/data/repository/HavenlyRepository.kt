@@ -194,10 +194,12 @@ class HavenlyRepository(
     }
 
     suspend fun updateUserProfile(
+        displayName: String? = null,
         role: UserRole? = null,
         verificationTier: VerificationTier? = null,
         preferredCurrency: CurrencyCode? = null,
-        wellnessFocus: String? = null
+        wellnessFocus: String? = null,
+        avatarBase64: String? = null
     ): Result<Unit> {
         var path = "users"
         return try {
@@ -207,14 +209,43 @@ class HavenlyRepository(
             val updates = mutableMapOf<String, Any>(
                 "updatedAt" to FieldValue.serverTimestamp()
             )
+            if (displayName != null) {
+                val cleanName = displayName.trim().take(80)
+                require(cleanName.isNotEmpty()) { "Display name cannot be blank." }
+                updates["displayName"] = cleanName
+            }
             if (role != null) updates["role"] = role.name
             if (verificationTier != null) updates["verificationStatus"] = verificationTier.name
             if (preferredCurrency != null) updates["preferredCurrency"] = preferredCurrency.code
             if (wellnessFocus != null) {
-                val clean = wellnessFocus.trim().take(300)
-                if (clean.isNotEmpty()) updates["wellnessFocus"] = clean
+                val cleanFocus = wellnessFocus.trim().take(300)
+                if (cleanFocus.isNotEmpty()) updates["wellnessFocus"] = cleanFocus
+            }
+            if (avatarBase64 != null) {
+                val cleanAvatar = avatarBase64.trim()
+                require(cleanAvatar.length <= 80_000) { "Profile picture exceeds maximum encoded size." }
+                updates["avatarBase64"] = cleanAvatar
             }
             docRef.update(updates).await()
+            if (displayName != null || avatarBase64 != null) {
+                val eventTitle = when {
+                    avatarBase64 != null && avatarBase64.isBlank() -> "Profile Photo Removed"
+                    avatarBase64 != null -> "Camera Profile Photo Updated"
+                    else -> "Member Display Name Updated"
+                }
+                val eventDetail = when {
+                    displayName != null -> "Display name updated to ${displayName.trim().take(80)}."
+                    avatarBase64 != null && avatarBase64.isBlank() -> "Avatar cleared; initials monogram active."
+                    else -> "Portrait thumbnail synced to verified member record."
+                }
+                logActivityInternal(
+                    uid = uid,
+                    category = "AUTH",
+                    title = eventTitle,
+                    detail = eventDetail,
+                    severity = "INFO"
+                )
+            }
             Result.success(Unit)
         } catch (e: CancellationException) {
             throw e

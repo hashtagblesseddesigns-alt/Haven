@@ -87,6 +87,7 @@ data class UserProfile(
     val verificationStatus: String = VerificationTier.STANDARD.name,
     val preferredCurrency: String = CurrencyCode.USD.code,
     val wellnessFocus: String = "Mindful platonic companionship, stress relief, and calm conversation",
+    val avatarBase64: String = "",
     @ServerTimestamp val createdAt: Timestamp? = null,
     @ServerTimestamp val updatedAt: Timestamp? = null
 )

@@ -11,6 +11,7 @@
         "verificationStatus": { "type": "string", "enum": ["STANDARD", "VERIFIED_2FA"], "description": "Identity & 2FA verification tier." },
         "preferredCurrency": { "type": "string", "enum": ["USD", "EUR", "GBP", "JPY", "CAD"], "description": "Display currency for session rates and earnings." },
         "wellnessFocus": { "type": "string", "description": "User wellness companionship preferences for AI matchmaking." },
+        "avatarBase64": { "type": "string", "description": "Compact Base64-encoded JPEG profile avatar thumbnail (max 80000 chars)." },
         "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp on creation." },
         "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp on update." }
       },

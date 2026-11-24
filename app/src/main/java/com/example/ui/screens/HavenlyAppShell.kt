@@ -14,10 +14,12 @@ import androidx.compose.material.icons.automirrored.rounded.Logout
 import androidx.compose.material.icons.outlined.AccountBalanceWallet
 import androidx.compose.material.icons.outlined.Hub
 import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Spa
 import androidx.compose.material.icons.rounded.AccountBalanceWallet
 import androidx.compose.material.icons.rounded.Hub
 import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.Spa
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -67,7 +69,8 @@ enum class HavenlyTab(
     LOUNGE("lounge", "Lounge", Icons.Rounded.Spa, Icons.Outlined.Spa),
     CIPHER("cipher", "Cipher", Icons.Rounded.Lock, Icons.Outlined.Lock),
     LEDGER("ledger", "Ledger", Icons.Rounded.AccountBalanceWallet, Icons.Outlined.AccountBalanceWallet),
-    EOA_OPS("eoa_ops", "EOA Ops", Icons.Rounded.Hub, Icons.Outlined.Hub)
+    EOA_OPS("eoa_ops", "EOA Ops", Icons.Rounded.Hub, Icons.Outlined.Hub),
+    PROFILE("profile", "Profile", Icons.Rounded.Person, Icons.Outlined.Person)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -93,6 +96,7 @@ fun HavenlyAppShell(
     val matchmakingState by viewModel.matchmakingState.collectAsStateWithLifecycle()
     val eoaCommandState by viewModel.eoaCommandState.collectAsStateWithLifecycle()
     val taxReportState by viewModel.taxReportState.collectAsStateWithLifecycle()
+    val profileSaveState by viewModel.profileSaveState.collectAsStateWithLifecycle()
     val bannerFeedback by viewModel.bannerFeedback.collectAsStateWithLifecycle()
 
     var currentTab by rememberSaveable { mutableStateOf(HavenlyTab.LOUNGE) }
@@ -127,6 +131,7 @@ fun HavenlyAppShell(
                                 HavenlyTab.CIPHER -> "AES-256-GCM Cipher"
                                 HavenlyTab.LEDGER -> "Earnings & Tax Ledger"
                                 HavenlyTab.EOA_OPS -> "EOA & Admin Telemetry"
+                                HavenlyTab.PROFILE -> "Member Profile"
                             },
                             style = MaterialTheme.typography.titleLarge
                         )
@@ -177,7 +182,7 @@ fun HavenlyAppShell(
                                         contentDescription = tab.label
                                     )
                                 },
-                                label = { Text(tab.label) },
+                                label = { Text(tab.label, maxLines = 1, softWrap = false) },
                                 modifier = Modifier.testTag("nav_${tab.route}")
                             )
                         }
@@ -257,6 +262,26 @@ fun HavenlyAppShell(
                             activityLogsState = activityLogsState,
                             eoaCommandState = eoaCommandState,
                             onRunEoaDirective = viewModel::runEoaOrchestration
+                        )
+
+                        HavenlyTab.PROFILE -> ProfileScreen(
+                            currentUserId = currentUserId,
+                            profileState = profileState,
+                            profileSaveState = profileSaveState,
+                            onSaveProfileDetails = viewModel::updateProfileDetails,
+                            onUploadAvatarBase64 = viewModel::updateProfileAvatar,
+                            onRemoveAvatar = viewModel::removeProfileAvatar,
+                            onSelectRole = viewModel::setRole,
+                            onSelectCurrency = viewModel::setPreferredCurrency,
+                            onOpenTwoFactor = { showTwoFactorDialog = true },
+                            onSignOutClick = {
+                                signOut(
+                                    credentialManager = credentialManager,
+                                    scope = scope,
+                                    onSignOutComplete = onSignedOut
+                                )
+                            },
+                            onShowMessage = viewModel::showBannerMessage
                         )
                     }
                 }
