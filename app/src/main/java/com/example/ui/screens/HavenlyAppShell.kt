@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
@@ -10,6 +11,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.Chat
+import androidx.compose.material.icons.automirrored.rounded.Chat
 import androidx.compose.material.icons.automirrored.rounded.Logout
 import androidx.compose.material.icons.outlined.AccountBalanceWallet
 import androidx.compose.material.icons.outlined.Hub
@@ -17,6 +20,7 @@ import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Spa
 import androidx.compose.material.icons.rounded.AccountBalanceWallet
+import androidx.compose.material.icons.rounded.BarChart
 import androidx.compose.material.icons.rounded.Hub
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Person
@@ -67,10 +71,12 @@ enum class HavenlyTab(
     val unselectedIcon: ImageVector
 ) {
     LOUNGE("lounge", "Lounge", Icons.Rounded.Spa, Icons.Outlined.Spa),
+    CHAT("chat", "Chat", Icons.AutoMirrored.Rounded.Chat, Icons.AutoMirrored.Outlined.Chat),
     CIPHER("cipher", "Cipher", Icons.Rounded.Lock, Icons.Outlined.Lock),
     LEDGER("ledger", "Ledger", Icons.Rounded.AccountBalanceWallet, Icons.Outlined.AccountBalanceWallet),
-    EOA_OPS("eoa_ops", "EOA Ops", Icons.Rounded.Hub, Icons.Outlined.Hub),
-    PROFILE("profile", "Profile", Icons.Rounded.Person, Icons.Outlined.Person)
+    EARNINGS("earnings", "Earnings", Icons.Rounded.BarChart, Icons.Rounded.BarChart),
+    PROFILE("profile", "Profile", Icons.Rounded.Person, Icons.Outlined.Person),
+    EOA_OPS("eoa_ops", "EOA Ops", Icons.Rounded.Hub, Icons.Outlined.Hub)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -90,6 +96,7 @@ fun HavenlyAppShell(
     val messagesState by viewModel.messagesState.collectAsStateWithLifecycle()
     val eoaRunsState by viewModel.eoaRunsState.collectAsStateWithLifecycle()
     val activityLogsState by viewModel.activityLogsState.collectAsStateWithLifecycle()
+    val liveChatsState by viewModel.liveChatsState.collectAsStateWithLifecycle()
     val hasConfiguredPin by viewModel.hasConfiguredPin.collectAsStateWithLifecycle()
     val showCipherInspector by viewModel.showCipherInspector.collectAsStateWithLifecycle()
     val selectedCompanionId by viewModel.selectedCompanionId.collectAsStateWithLifecycle()
@@ -97,11 +104,17 @@ fun HavenlyAppShell(
     val eoaCommandState by viewModel.eoaCommandState.collectAsStateWithLifecycle()
     val taxReportState by viewModel.taxReportState.collectAsStateWithLifecycle()
     val profileSaveState by viewModel.profileSaveState.collectAsStateWithLifecycle()
+    val autoReplyEnabled by viewModel.autoReplyEnabled.collectAsStateWithLifecycle()
+    val liveReplyState by viewModel.liveReplyState.collectAsStateWithLifecycle()
     val bannerFeedback by viewModel.bannerFeedback.collectAsStateWithLifecycle()
 
     var currentTab by rememberSaveable { mutableStateOf(HavenlyTab.LOUNGE) }
     var showTwoFactorDialog by remember { mutableStateOf(false) }
     var companionToBook by remember { mutableStateOf<CompanionProfile?>(null) }
+
+    BackHandler(enabled = currentTab != HavenlyTab.LOUNGE) {
+        currentTab = HavenlyTab.LOUNGE
+    }
 
     val snackbarHostState = remember { SnackbarHostState() }
     LaunchedEffect(bannerFeedback) {
@@ -128,8 +141,10 @@ fun HavenlyAppShell(
                         Text(
                             text = when (currentTab) {
                                 HavenlyTab.LOUNGE -> "Havenly Sanctuary"
+                                HavenlyTab.CHAT -> "Live Firestore Chat"
                                 HavenlyTab.CIPHER -> "AES-256-GCM Cipher"
                                 HavenlyTab.LEDGER -> "Earnings & Tax Ledger"
+                                HavenlyTab.EARNINGS -> "Daily Earnings Chart"
                                 HavenlyTab.EOA_OPS -> "EOA & Admin Telemetry"
                                 HavenlyTab.PROFILE -> "Member Profile"
                             },
@@ -140,6 +155,34 @@ fun HavenlyAppShell(
                         containerColor = MaterialTheme.colorScheme.background
                     ),
                     actions = {
+                        IconButton(
+                            onClick = { currentTab = HavenlyTab.EARNINGS },
+                            modifier = Modifier.testTag("topbar_earnings_chart_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.BarChart,
+                                contentDescription = "Daily Earnings Chart",
+                                tint = if (currentTab == HavenlyTab.EARNINGS) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                }
+                            )
+                        }
+                        IconButton(
+                            onClick = { currentTab = HavenlyTab.EOA_OPS },
+                            modifier = Modifier.testTag("topbar_eoa_ops_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Hub,
+                                contentDescription = "EOA & Admin Telemetry",
+                                tint = if (currentTab == HavenlyTab.EOA_OPS) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                }
+                            )
+                        }
                         IconButton(
                             onClick = { showTwoFactorDialog = true },
                             modifier = Modifier.testTag("topbar_2fa_button")
@@ -170,8 +213,15 @@ fun HavenlyAppShell(
             },
             bottomBar = {
                 if (!useNavRail) {
+                    val primaryTabs = listOf(
+                        HavenlyTab.LOUNGE,
+                        HavenlyTab.CHAT,
+                        HavenlyTab.CIPHER,
+                        HavenlyTab.LEDGER,
+                        HavenlyTab.PROFILE
+                    )
                     NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
-                        HavenlyTab.entries.forEach { tab ->
+                        primaryTabs.forEach { tab ->
                             val selected = currentTab == tab
                             NavigationBarItem(
                                 selected = selected,
@@ -236,6 +286,20 @@ fun HavenlyAppShell(
                             }
                         )
 
+                        HavenlyTab.CHAT -> LiveChatScreen(
+                            companions = viewModel.companions,
+                            selectedCompanionId = selectedCompanionId,
+                            liveChatsState = liveChatsState,
+                            autoReplyEnabled = autoReplyEnabled,
+                            liveReplyState = liveReplyState,
+                            onSelectCompanion = viewModel::selectCompanionForChat,
+                            onToggleAutoReply = viewModel::setLiveAutoReplyEnabled,
+                            onSendMessage = viewModel::sendLiveChatMessage,
+                            onRequestCompanionReply = viewModel::requestCompanionLiveReply,
+                            onDeleteMessage = viewModel::deleteLiveChatMessage,
+                            onOpenEncryptedChat = { currentTab = HavenlyTab.CIPHER }
+                        )
+
                         HavenlyTab.CIPHER -> CipherChatScreen(
                             currentUserId = currentUserId,
                             companions = viewModel.companions,
@@ -254,7 +318,19 @@ fun HavenlyAppShell(
                             taxReportState = taxReportState,
                             onSelectCurrency = viewModel::setPreferredCurrency,
                             onAdvanceBooking = viewModel::advanceBooking,
-                            onGenerateTaxReport = viewModel::generateTaxComplianceReport
+                            onGenerateTaxReport = viewModel::generateTaxComplianceReport,
+                            onOpenEarningsChart = { currentTab = HavenlyTab.EARNINGS }
+                        )
+
+                        HavenlyTab.EARNINGS -> EarningsTrackerScreen(
+                            profileState = profileState,
+                            bookingsState = bookingsState,
+                            messagesState = messagesState,
+                            liveChatsState = liveChatsState,
+                            activityLogsState = activityLogsState,
+                            onSelectCurrency = viewModel::setPreferredCurrency,
+                            onOpenLounge = { currentTab = HavenlyTab.LOUNGE },
+                            onOpenLedger = { currentTab = HavenlyTab.LEDGER }
                         )
 
                         HavenlyTab.EOA_OPS -> EoaOpsScreen(

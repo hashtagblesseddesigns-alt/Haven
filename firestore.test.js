@@ -295,3 +295,55 @@ test("Admin email spoofing test: unverified admin email rejected, verified admin
     .firestore();
   await assertSucceeds(realAdmin.collection("users").doc(ALICE_UID).get());
 });
+
+test("LiveChats: real-time chat create, list, text bounds, and cross-user isolation", async () => {
+  const aliceDb = testEnv.authenticatedContext(ALICE_UID).firestore();
+  const bobDb = testEnv.authenticatedContext(BOB_UID).firestore();
+  const now = new Date(Date.now() - 2000);
+  const chatRef = aliceDb.collection("users").doc(ALICE_UID).collection("liveChats");
+
+  await assertSucceeds(
+    chatRef.doc("chat_1").set({
+      userId: ALICE_UID,
+      companionId: "elena_01",
+      companionName: "Elena Vance",
+      senderRole: "USER",
+      senderName: "Alice Moreau",
+      text: "Hi Elena, looking forward to our tea & breathwork session!",
+      createdAt: now,
+      updatedAt: now,
+    })
+  );
+
+  await assertSucceeds(chatRef.get());
+
+  // Empty text must fail
+  await assertFails(
+    chatRef.doc("chat_2").set({
+      userId: ALICE_UID,
+      companionId: "elena_01",
+      companionName: "Elena Vance",
+      senderRole: "USER",
+      senderName: "Alice Moreau",
+      text: "",
+      createdAt: now,
+      updatedAt: now,
+    })
+  );
+
+  // Cross-user read & write must fail
+  await assertFails(bobDb.collection("users").doc(ALICE_UID).collection("liveChats").get());
+  await assertFails(
+    bobDb.collection("users").doc(ALICE_UID).collection("liveChats").doc("chat_3").set({
+      userId: ALICE_UID,
+      companionId: "elena_01",
+      companionName: "Elena Vance",
+      senderRole: "COMPANION",
+      senderName: "Elena Vance",
+      text: "Spoofed message",
+      createdAt: now,
+      updatedAt: now,
+    })
+  );
+});
+

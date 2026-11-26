@@ -195,4 +195,33 @@ class HavenlyAiService {
         return response.text?.takeIf { it.isNotBlank() }
             ?: throw IllegalStateException("Tax compliance model returned an empty report.")
     }
+
+    suspend fun generateCompanionChatReply(
+        companion: CompanionProfile,
+        memberName: String,
+        recentMessages: List<com.example.data.model.LiveChatMessage>,
+        latestUserMessage: String
+    ): String {
+        val transcript = recentMessages.takeLast(6).joinToString("\n") { msg ->
+            "${msg.senderName}: ${msg.text}"
+        }
+        val prompt = """
+            You are ${companion.name}, a verified PG-13 platonic wellness & cuddle therapy companion based in ${companion.city} (${companion.tagline}).
+            Specialties: ${companion.specialties.joinToString(", ")}.
+            You are chatting in real time with member "$memberName".
+            Keep the reply warm, grounded, supportive, strictly platonic/PG-13, and under 65 words. Do not use markdown code fences.
+
+            Recent conversation:
+            $transcript
+            $memberName: $latestUserMessage
+
+            Reply directly as ${companion.name}:
+        """.trimIndent()
+
+        val response = withTimeout(60_000L) {
+            taxReportModel.generateContent(prompt)
+        }
+        return response.text?.trim()?.take(1400)?.takeIf { it.isNotBlank() }
+            ?: throw IllegalStateException("Companion reply model returned empty text.")
+    }
 }

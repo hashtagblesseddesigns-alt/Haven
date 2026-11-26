@@ -8,6 +8,7 @@ import com.example.data.model.CompanionProfile
 import com.example.data.model.CurrencyCode
 import com.example.data.model.EncryptedMessage
 import com.example.data.model.EoaAgentRun
+import com.example.data.model.LiveChatMessage
 import com.example.data.model.MatchScore
 import com.example.data.model.SessionBooking
 import com.example.data.model.UserProfile
@@ -129,6 +130,26 @@ class HavenlyRepository(
                 .map { snapshot ->
                     snapshot.toObjects(ActivityAuditLog::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
                         .sortedByDescending { it.createdAt?.seconds ?: 0L }
+                }
+                .catch { error ->
+                    rethrowOrLog(error, OperationType.LIST, path, userId)
+                }
+        )
+    }
+
+    fun observeLiveChats(userId: String): Flow<List<LiveChatMessage>> = flow {
+        val path = "users/$userId/liveChats"
+        emitAll(
+            db.collection("users").document(userId).collection("liveChats")
+                .snapshots()
+                .map { snapshot ->
+                    snapshot.toObjects(LiveChatMessage::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
+                        .sortedWith(
+                            compareBy<LiveChatMessage>(
+                                { it.createdAt?.seconds ?: Long.MAX_VALUE },
+                                { it.createdAt?.nanoseconds ?: Int.MAX_VALUE }
+                            )
+                        )
                 }
                 .catch { error ->
                     rethrowOrLog(error, OperationType.LIST, path, userId)
@@ -472,6 +493,60 @@ class HavenlyRepository(
             throw e
         } catch (e: Exception) {
             handleFirestoreError(e, OperationType.CREATE, path)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun sendLiveChatMessage(
+        companion: CompanionProfile,
+        text: String,
+        senderRole: String,
+        senderName: String
+    ): Result<Unit> {
+        var path = "users/liveChats"
+        return try {
+            val uid = requireUserId()
+            val cleanText = text.trim().take(1500)
+            require(cleanText.isNotEmpty()) { "Message text cannot be empty." }
+            val safeRole = if (senderRole == "COMPANION") "COMPANION" else "USER"
+            val cleanSender = senderName.trim().ifBlank {
+                if (safeRole == "COMPANION") companion.name else "Havenly Member"
+            }.take(80)
+            val docRef = db.collection("users").document(uid).collection("liveChats").document()
+            path = docRef.path
+            val payload = mapOf(
+                "userId" to uid,
+                "companionId" to companion.id,
+                "companionName" to companion.name.take(80),
+                "senderRole" to safeRole,
+                "senderName" to cleanSender,
+                "text" to cleanText,
+                "createdAt" to FieldValue.serverTimestamp(),
+                "updatedAt" to FieldValue.serverTimestamp()
+            )
+            docRef.set(payload).await()
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.CREATE, path)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun deleteLiveChatMessage(messageId: String): Result<Unit> {
+        var path = "users/liveChats"
+        return try {
+            val uid = requireUserId()
+            require(messageId.isNotBlank()) { "Message ID cannot be blank." }
+            val docRef = db.collection("users").document(uid).collection("liveChats").document(messageId)
+            path = docRef.path
+            docRef.delete().await()
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.DELETE, path)
             Result.failure(e)
         }
     }

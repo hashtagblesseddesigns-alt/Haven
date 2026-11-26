@@ -173,6 +173,20 @@ data class ActivityAuditLog(
     @ServerTimestamp val createdAt: Timestamp? = null
 )
 
+@Keep
+@IgnoreExtraProperties
+data class LiveChatMessage(
+    @DocumentId val id: String = "",
+    val userId: String = "",
+    val companionId: String = "",
+    val companionName: String = "",
+    val senderRole: String = "USER",
+    val senderName: String = "",
+    val text: String = "",
+    @ServerTimestamp val createdAt: Timestamp? = null,
+    @ServerTimestamp val updatedAt: Timestamp? = null
+)
+
 data class CompanionProfile(
     val id: String,
     val name: String,

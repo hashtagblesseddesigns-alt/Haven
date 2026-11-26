@@ -10,6 +10,7 @@ import com.example.data.model.CompanionProfile
 import com.example.data.model.CurrencyCode
 import com.example.data.model.EncryptedMessage
 import com.example.data.model.EoaAgentRun
+import com.example.data.model.LiveChatMessage
 import com.example.data.model.MatchScore
 import com.example.data.model.SessionBooking
 import com.example.data.model.UserProfile
@@ -116,6 +117,11 @@ class HavenlyViewModel(
         .catch { emit(unwrapFirestoreError("activityLogs", it)) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), UiState.Loading)
 
+    val liveChatsState: StateFlow<UiState<List<LiveChatMessage>>> = repository.observeLiveChats(currentUserId)
+        .map<List<LiveChatMessage>, UiState<List<LiveChatMessage>>> { UiState.Success(it) }
+        .catch { emit(unwrapFirestoreError("liveChats", it)) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), UiState.Loading)
+
     val hasConfiguredPin: StateFlow<Boolean> = twoFactorPrefs.hasConfiguredPin
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), false)
 
@@ -136,6 +142,12 @@ class HavenlyViewModel(
 
     private val _profileSaveState = MutableStateFlow<AiTaskState>(AiTaskState.Idle)
     val profileSaveState: StateFlow<AiTaskState> = _profileSaveState.asStateFlow()
+
+    private val _autoReplyEnabled = MutableStateFlow(true)
+    val autoReplyEnabled: StateFlow<Boolean> = _autoReplyEnabled.asStateFlow()
+
+    private val _liveReplyState = MutableStateFlow<AiTaskState>(AiTaskState.Idle)
+    val liveReplyState: StateFlow<AiTaskState> = _liveReplyState.asStateFlow()
 
     private val _bannerFeedback = MutableStateFlow<String?>(null)
     val bannerFeedback: StateFlow<String?> = _bannerFeedback.asStateFlow()
@@ -373,6 +385,88 @@ class HavenlyViewModel(
                 .onFailure {
                     _bannerFeedback.value = it.localizedMessage ?: "Check-in encryption failed."
                 }
+        }
+    }
+
+    fun setLiveAutoReplyEnabled(enabled: Boolean) {
+        _autoReplyEnabled.value = enabled
+    }
+
+    fun sendLiveChatMessage(companion: CompanionProfile, messageText: String) {
+        val cleanText = messageText.trim()
+        if (cleanText.isEmpty()) return
+        val memberName = (profileState.value as? UiState.Success)?.data?.displayName?.ifBlank { "Havenly Member" }
+            ?: "Havenly Member"
+        val currentThread = (liveChatsState.value as? UiState.Success)?.data.orEmpty()
+            .filter { it.companionId == companion.id }
+
+        viewModelScope.launch {
+            val sendResult = repository.sendLiveChatMessage(
+                companion = companion,
+                text = cleanText,
+                senderRole = "USER",
+                senderName = memberName
+            )
+            if (sendResult.isFailure) {
+                _bannerFeedback.value = sendResult.exceptionOrNull()?.localizedMessage ?: "Failed to send message."
+                return@launch
+            }
+            if (_autoReplyEnabled.value) {
+                generateAndSyncCompanionReply(companion, memberName, currentThread, cleanText)
+            }
+        }
+    }
+
+    fun requestCompanionLiveReply(companion: CompanionProfile) {
+        val memberName = (profileState.value as? UiState.Success)?.data?.displayName?.ifBlank { "Havenly Member" }
+            ?: "Havenly Member"
+        val currentThread = (liveChatsState.value as? UiState.Success)?.data.orEmpty()
+            .filter { it.companionId == companion.id }
+        val latestUserPrompt = currentThread.lastOrNull { it.senderRole == "USER" }?.text
+            ?: "Hi ${companion.name}, checking in for our wellness session."
+
+        viewModelScope.launch {
+            generateAndSyncCompanionReply(companion, memberName, currentThread, latestUserPrompt)
+        }
+    }
+
+    fun deleteLiveChatMessage(messageId: String) {
+        viewModelScope.launch {
+            repository.deleteLiveChatMessage(messageId)
+                .onFailure { err ->
+                    _bannerFeedback.value = err.localizedMessage ?: "Could not delete message."
+                }
+        }
+    }
+
+    private suspend fun generateAndSyncCompanionReply(
+        companion: CompanionProfile,
+        memberName: String,
+        recentThread: List<LiveChatMessage>,
+        latestMessage: String
+    ) {
+        _liveReplyState.value = AiTaskState.Running
+        try {
+            val replyText = aiService.generateCompanionChatReply(
+                companion = companion,
+                memberName = memberName,
+                recentMessages = recentThread,
+                latestUserMessage = latestMessage
+            )
+            repository.sendLiveChatMessage(
+                companion = companion,
+                text = replyText,
+                senderRole = "COMPANION",
+                senderName = companion.name
+            ).getOrThrow()
+            _liveReplyState.value = AiTaskState.Idle
+        } catch (e: TimeoutCancellationException) {
+            _liveReplyState.value = AiTaskState.Error("Companion reply timed out.")
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "Companion live reply failed", e)
+            _liveReplyState.value = AiTaskState.Error(e.localizedMessage ?: "Could not receive companion reply.")
         }
     }
 

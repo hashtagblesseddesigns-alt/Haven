@@ -124,6 +124,17 @@ service cloud.firestore {
              isValidTimestamp(data.createdAt);
     }
 
+    function isValidLiveChatMessage(data, userId) {
+      return data.userId is string && data.userId == userId &&
+             data.companionId is string && isValidId(data.companionId) &&
+             data.companionName is string && data.companionName.size() >= 1 && data.companionName.size() <= 80 &&
+             data.senderRole in ['USER', 'COMPANION'] &&
+             data.senderName is string && data.senderName.size() >= 1 && data.senderName.size() <= 80 &&
+             data.text is string && data.text.size() >= 1 && data.text.size() <= 1500 &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
     // --- Admin Registry (read-only from client SDKs) ---
     match /admins/{adminId} {
       allow get: if isSignedIn() && request.auth.uid == adminId;
@@ -250,6 +261,27 @@ service cloud.firestore {
                          isValidActivityLog(incoming(), userId);
 
         allow update, delete: if isValidId(userId) && isValidId(logId) && isAdmin();
+      }
+
+      // Real-Time Firestore Chat Messages
+      match /liveChats/{chatId} {
+        allow get: if isValidId(userId) && isValidId(chatId) && (isOwner(userId) || isAdmin());
+        allow list: if isOwner(userId) || isAdmin();
+
+        allow create: if isValidId(userId) && isValidId(chatId) &&
+                         (isOwner(userId) || isAdmin()) &&
+                         incoming().keys().hasAll(['userId', 'companionId', 'companionName', 'senderRole', 'senderName', 'text', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['userId', 'companionId', 'companionName', 'senderRole', 'senderName', 'text', 'createdAt', 'updatedAt']) &&
+                         isValidLiveChatMessage(incoming(), userId);
+
+        allow update: if isValidId(userId) && isValidId(chatId) &&
+                         (isOwner(userId) || isAdmin()) &&
+                         isValidLiveChatMessage(incoming(), userId) &&
+                         incoming().userId == existing().userId &&
+                         incoming().createdAt == existing().createdAt &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['text', 'updatedAt']);
+
+        allow delete: if isValidId(userId) && isValidId(chatId) && (isOwner(userId) || isAdmin());
       }
     }
   }

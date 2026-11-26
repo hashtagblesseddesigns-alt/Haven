@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AccountBalanceWallet
+import androidx.compose.material.icons.rounded.BarChart
 import androidx.compose.material.icons.rounded.ReceiptLong
 import androidx.compose.material.icons.rounded.Verified
 import androidx.compose.material3.Button
@@ -28,6 +29,7 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -54,7 +56,8 @@ fun LedgerScreen(
     taxReportState: AiTaskState,
     onSelectCurrency: (CurrencyCode) -> Unit,
     onAdvanceBooking: (SessionBooking) -> Unit,
-    onGenerateTaxReport: () -> Unit
+    onGenerateTaxReport: () -> Unit,
+    onOpenEarningsChart: () -> Unit = {}
 ) {
     val profile = (profileState as? UiState.Success)?.data
     val activeCurrency = CurrencyCode.fromRaw(profile?.preferredCurrency)
@@ -136,7 +139,7 @@ fun LedgerScreen(
                     }
 
                     Text(
-                        text = "Creator-Program-compliant session & tax ledger (multi-currency estimator & payout request tracking without live bank transfers).",
+                        text = "Creator-Program-compliant PG-13 wellness session & tax ledger (multi-currency estimator without live bank, card, PayPal/Cash App/Venmo, or Web3 transfers).",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -163,6 +166,19 @@ fun LedgerScreen(
                             Spacer(Modifier.width(8.dp))
                             Text("Generate AI Tax & Compliance Brief")
                         }
+                    }
+
+                    OutlinedButton(
+                        onClick = onOpenEarningsChart,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp)
+                            .testTag("ledger_open_earnings_chart_button")
+                    ) {
+                        Icon(Icons.Rounded.BarChart, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("View Daily Performance Bar Chart")
                     }
 
                     AnimatedVisibility(visible = taxReportState is AiTaskState.Success || taxReportState is AiTaskState.Error) {

@@ -107,6 +107,22 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["userId", "category", "title", "detail", "severity", "createdAt"]
+    },
+    "LiveChatMessage": {
+      "title": "LiveChatMessage",
+      "description": "Real-time synchronized PG-13 text chat message stored in Firestore.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "companionId": { "type": "string" },
+        "companionName": { "type": "string" },
+        "senderRole": { "type": "string", "enum": ["USER", "COMPANION"] },
+        "senderName": { "type": "string" },
+        "text": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "companionId", "companionName", "senderRole", "senderName", "text", "createdAt", "updatedAt"]
     }
   },
   "firestore": {
@@ -133,6 +149,10 @@
     "/users/{userId}/activityLogs/{logId}": {
       "schema": { "$ref": "#/entities/ActivityAuditLog" },
       "description": "Real-time verified user activity and security audit logs."
+    },
+    "/users/{userId}/liveChats/{chatId}": {
+      "schema": { "$ref": "#/entities/LiveChatMessage" },
+      "description": "Real-time synchronized text chat messages."
     }
   }
 }
