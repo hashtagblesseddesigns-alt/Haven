@@ -17,8 +17,8 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ShowChart
 import androidx.compose.material.icons.rounded.AccountBalanceWallet
-import androidx.compose.material.icons.rounded.BarChart
 import androidx.compose.material.icons.rounded.ReceiptLong
 import androidx.compose.material.icons.rounded.Verified
 import androidx.compose.material3.Button
@@ -176,9 +176,9 @@ fun LedgerScreen(
                             .height(48.dp)
                             .testTag("ledger_open_earnings_chart_button")
                     ) {
-                        Icon(Icons.Rounded.BarChart, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Icon(Icons.AutoMirrored.Rounded.ShowChart, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text("View Daily Performance Bar Chart")
+                        Text("Open Earnings Dashboard & Charts")
                     }
 
                     AnimatedVisibility(visible = taxReportState is AiTaskState.Success || taxReportState is AiTaskState.Error) {

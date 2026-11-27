@@ -7,10 +7,12 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.width
@@ -18,13 +20,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.automirrored.rounded.Chat
 import androidx.compose.material.icons.automirrored.rounded.Logout
+import androidx.compose.material.icons.automirrored.rounded.ShowChart
 import androidx.compose.material.icons.outlined.AccountBalanceWallet
 import androidx.compose.material.icons.outlined.Hub
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Spa
 import androidx.compose.material.icons.rounded.AccountBalanceWallet
-import androidx.compose.material.icons.rounded.BarChart
 import androidx.compose.material.icons.rounded.Hub
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Person
@@ -39,6 +41,9 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -47,6 +52,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -80,7 +86,7 @@ enum class HavenlyTab(
     CHAT("chat", "Chat", Icons.AutoMirrored.Rounded.Chat, Icons.AutoMirrored.Outlined.Chat),
     CIPHER("cipher", "Cipher", Icons.Rounded.Lock, Icons.Outlined.Lock),
     LEDGER("ledger", "Ledger", Icons.Rounded.AccountBalanceWallet, Icons.Outlined.AccountBalanceWallet),
-    EARNINGS("earnings", "Earnings", Icons.Rounded.BarChart, Icons.Rounded.BarChart),
+    EARNINGS("earnings", "Earnings", Icons.AutoMirrored.Rounded.ShowChart, Icons.AutoMirrored.Rounded.ShowChart),
     PROFILE("profile", "Profile", Icons.Rounded.Person, Icons.Outlined.Person),
     EOA_OPS("eoa_ops", "EOA Ops", Icons.Rounded.Hub, Icons.Outlined.Hub)
 }
@@ -226,7 +232,7 @@ fun HavenlyAppShell(
                                 HavenlyTab.CHAT -> "Live Firestore Chat"
                                 HavenlyTab.CIPHER -> "AES-256-GCM Cipher"
                                 HavenlyTab.LEDGER -> "Earnings & Tax Ledger"
-                                HavenlyTab.EARNINGS -> "Daily Earnings Chart"
+                                HavenlyTab.EARNINGS -> "Earnings Dashboard"
                                 HavenlyTab.EOA_OPS -> "EOA & Admin Telemetry"
                                 HavenlyTab.PROFILE -> "Member Profile"
                             },
@@ -242,8 +248,8 @@ fun HavenlyAppShell(
                             modifier = Modifier.testTag("topbar_earnings_chart_button")
                         ) {
                             Icon(
-                                imageVector = Icons.Rounded.BarChart,
-                                contentDescription = "Daily Earnings Chart",
+                                imageVector = Icons.AutoMirrored.Rounded.ShowChart,
+                                contentDescription = "Earnings Dashboard",
                                 tint = if (currentTab == HavenlyTab.EARNINGS) {
                                     MaterialTheme.colorScheme.primary
                                 } else {
@@ -404,16 +410,55 @@ fun HavenlyAppShell(
                             onOpenEarningsChart = { currentTab = HavenlyTab.EARNINGS }
                         )
 
-                        HavenlyTab.EARNINGS -> EarningsTrackerScreen(
-                            profileState = profileState,
-                            bookingsState = bookingsState,
-                            messagesState = messagesState,
-                            liveChatsState = liveChatsState,
-                            activityLogsState = activityLogsState,
-                            onSelectCurrency = viewModel::setPreferredCurrency,
-                            onOpenLounge = { currentTab = HavenlyTab.LOUNGE },
-                            onOpenLedger = { currentTab = HavenlyTab.LEDGER }
-                        )
+                        HavenlyTab.EARNINGS -> {
+                            var chartViewIndex by rememberSaveable { mutableIntStateOf(0) }
+                            Column(modifier = Modifier.fillMaxSize()) {
+                                SingleChoiceSegmentedButtonRow(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                                ) {
+                                    SegmentedButton(
+                                        selected = chartViewIndex == 0,
+                                        onClick = { chartViewIndex = 0 },
+                                        shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                                        modifier = Modifier.testTag("earnings_view_line_dashboard")
+                                    ) {
+                                        Text("Line Trend")
+                                    }
+                                    SegmentedButton(
+                                        selected = chartViewIndex == 1,
+                                        onClick = { chartViewIndex = 1 },
+                                        shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                                        modifier = Modifier.testTag("earnings_view_daily_bars")
+                                    ) {
+                                        Text("Daily Activity")
+                                    }
+                                }
+                                Box(modifier = Modifier.weight(1f)) {
+                                    if (chartViewIndex == 0) {
+                                        EarningsDashboard(
+                                            profileState = profileState,
+                                            bookingsState = bookingsState,
+                                            onSelectCurrency = viewModel::setPreferredCurrency,
+                                            onOpenLounge = { currentTab = HavenlyTab.LOUNGE },
+                                            onOpenLedger = { currentTab = HavenlyTab.LEDGER }
+                                        )
+                                    } else {
+                                        EarningsTrackerScreen(
+                                            profileState = profileState,
+                                            bookingsState = bookingsState,
+                                            messagesState = messagesState,
+                                            liveChatsState = liveChatsState,
+                                            activityLogsState = activityLogsState,
+                                            onSelectCurrency = viewModel::setPreferredCurrency,
+                                            onOpenLounge = { currentTab = HavenlyTab.LOUNGE },
+                                            onOpenLedger = { currentTab = HavenlyTab.LEDGER }
+                                        )
+                                    }
+                                }
+                            }
+                        }
 
                         HavenlyTab.EOA_OPS -> EoaOpsScreen(
                             eoaRunsState = eoaRunsState,
