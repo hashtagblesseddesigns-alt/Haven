@@ -1,6 +1,10 @@
 package com.example.ui.screens
 
+import android.Manifest
+import android.os.Build
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
@@ -58,10 +62,12 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.model.CompanionProfile
 import com.example.data.model.CurrencyCode
 import com.example.data.model.VerificationTier
+import com.example.notifications.HavenlyNotificationHelper
 import com.example.ui.auth.signOut
 import com.example.ui.theme.AlertAmber
 import com.example.ui.theme.TrustEmerald
 import com.example.ui.viewmodel.HavenlyViewModel
+import com.example.ui.viewmodel.RealtimeAlertEvent
 import com.example.ui.viewmodel.UiState
 
 enum class HavenlyTab(
@@ -84,6 +90,9 @@ enum class HavenlyTab(
 fun HavenlyAppShell(
     currentUserId: String,
     viewModel: HavenlyViewModel,
+    pendingNavDestination: String? = null,
+    pendingCompanionId: String? = null,
+    onConsumeNavExtras: () -> Unit = {},
     onSignedOut: () -> Unit
 ) {
     val context = LocalContext.current
@@ -99,6 +108,7 @@ fun HavenlyAppShell(
     val liveChatsState by viewModel.liveChatsState.collectAsStateWithLifecycle()
     val hasConfiguredPin by viewModel.hasConfiguredPin.collectAsStateWithLifecycle()
     val showCipherInspector by viewModel.showCipherInspector.collectAsStateWithLifecycle()
+    val cachedFcmToken by viewModel.cachedFcmToken.collectAsStateWithLifecycle()
     val selectedCompanionId by viewModel.selectedCompanionId.collectAsStateWithLifecycle()
     val matchmakingState by viewModel.matchmakingState.collectAsStateWithLifecycle()
     val eoaCommandState by viewModel.eoaCommandState.collectAsStateWithLifecycle()
@@ -111,6 +121,66 @@ fun HavenlyAppShell(
     var currentTab by rememberSaveable { mutableStateOf(HavenlyTab.LOUNGE) }
     var showTwoFactorDialog by remember { mutableStateOf(false) }
     var companionToBook by remember { mutableStateOf<CompanionProfile?>(null) }
+    var hasPromptedNotifications by rememberSaveable { mutableStateOf(false) }
+
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            viewModel.syncFcmToken(showToastOnSuccess = false)
+            viewModel.showBannerMessage("Real-time notifications enabled for chat & payments.")
+        } else {
+            viewModel.showBannerMessage("Notifications permission denied. Enable anytime in Profile.")
+        }
+    }
+
+    LaunchedEffect(pendingNavDestination, pendingCompanionId) {
+        val dest = pendingNavDestination
+        val compId = pendingCompanionId
+        if (!compId.isNullOrBlank()) {
+            viewModel.selectCompanionForChat(compId)
+        }
+        if (!dest.isNullOrBlank()) {
+            currentTab = when (dest) {
+                HavenlyNotificationHelper.DEST_CHAT -> HavenlyTab.CHAT
+                HavenlyNotificationHelper.DEST_CIPHER -> HavenlyTab.CIPHER
+                HavenlyNotificationHelper.DEST_LEDGER -> HavenlyTab.LEDGER
+                else -> currentTab
+            }
+        }
+        if (!dest.isNullOrBlank() || !compId.isNullOrBlank()) {
+            onConsumeNavExtras()
+        }
+    }
+
+    LaunchedEffect(viewModel) {
+        viewModel.alertEvents.collect { event ->
+            when (event) {
+                is RealtimeAlertEvent.ChatAlert -> {
+                    HavenlyNotificationHelper.showChatAlert(
+                        context = context,
+                        title = event.title,
+                        body = event.body,
+                        companionId = event.companionId,
+                        destination = if (event.isEncrypted) {
+                            HavenlyNotificationHelper.DEST_CIPHER
+                        } else {
+                            HavenlyNotificationHelper.DEST_CHAT
+                        }
+                    )
+                }
+
+                is RealtimeAlertEvent.PaymentAlert -> {
+                    HavenlyNotificationHelper.showPaymentAlert(
+                        context = context,
+                        title = event.title,
+                        body = event.body,
+                        referenceId = event.bookingId
+                    )
+                }
+            }
+        }
+    }
 
     BackHandler(enabled = currentTab != HavenlyTab.LOUNGE) {
         currentTab = HavenlyTab.LOUNGE
@@ -128,6 +198,18 @@ fun HavenlyAppShell(
     val profile = (profileState as? UiState.Success)?.data
     val is2fa = profile?.verificationStatus == VerificationTier.VERIFIED_2FA.name
     val activeCurrency = CurrencyCode.fromRaw(profile?.preferredCurrency)
+
+    LaunchedEffect(currentTab, profile?.notificationsEnabled) {
+        val isAlertTab = currentTab == HavenlyTab.CHAT || currentTab == HavenlyTab.CIPHER || currentTab == HavenlyTab.LEDGER
+        val alertsWanted = profile?.notificationsEnabled ?: true
+        if (isAlertTab && alertsWanted && !hasPromptedNotifications &&
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            !HavenlyNotificationHelper.hasNotificationPermission(context)
+        ) {
+            hasPromptedNotifications = true
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val useNavRail = maxWidth >= 600.dp
@@ -344,11 +426,14 @@ fun HavenlyAppShell(
                             currentUserId = currentUserId,
                             profileState = profileState,
                             profileSaveState = profileSaveState,
+                            cachedFcmToken = cachedFcmToken,
                             onSaveProfileDetails = viewModel::updateProfileDetails,
                             onUploadAvatarBase64 = viewModel::updateProfileAvatar,
                             onRemoveAvatar = viewModel::removeProfileAvatar,
                             onSelectRole = viewModel::setRole,
                             onSelectCurrency = viewModel::setPreferredCurrency,
+                            onToggleNotifications = viewModel::setNotificationsEnabled,
+                            onRefreshFcmToken = { viewModel.syncFcmToken(showToastOnSuccess = true) },
                             onOpenTwoFactor = { showTwoFactorDialog = true },
                             onSignOutClick = {
                                 signOut(

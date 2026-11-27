@@ -88,6 +88,8 @@ data class UserProfile(
     val preferredCurrency: String = CurrencyCode.USD.code,
     val wellnessFocus: String = "Mindful platonic companionship, stress relief, and calm conversation",
     val avatarBase64: String = "",
+    val fcmToken: String = "",
+    val notificationsEnabled: Boolean = true,
     @ServerTimestamp val createdAt: Timestamp? = null,
     @ServerTimestamp val updatedAt: Timestamp? = null
 )

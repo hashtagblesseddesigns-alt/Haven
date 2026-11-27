@@ -3,6 +3,7 @@ package com.example.ui.screens
 import android.Manifest
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -33,9 +34,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Logout
 import androidx.compose.material.icons.rounded.Badge
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.PhotoCamera
 import androidx.compose.material.icons.rounded.PhotoLibrary
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.Verified
 import androidx.compose.material3.AssistChip
@@ -50,6 +54,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -65,8 +70,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -76,6 +83,7 @@ import com.example.data.model.CurrencyCode
 import com.example.data.model.UserProfile
 import com.example.data.model.UserRole
 import com.example.data.model.VerificationTier
+import com.example.notifications.HavenlyNotificationHelper
 import com.example.security.AvatarImageUtils
 import com.example.ui.theme.AlertAmber
 import com.example.ui.theme.MonoMetricStyle
@@ -92,16 +100,20 @@ fun ProfileScreen(
     currentUserId: String,
     profileState: UiState<UserProfile?>,
     profileSaveState: AiTaskState,
+    cachedFcmToken: String = "",
     onSaveProfileDetails: (displayName: String, wellnessFocus: String) -> Unit,
     onUploadAvatarBase64: (String) -> Unit,
     onRemoveAvatar: () -> Unit,
     onSelectRole: (UserRole) -> Unit,
     onSelectCurrency: (CurrencyCode) -> Unit,
+    onToggleNotifications: (Boolean) -> Unit = {},
+    onRefreshFcmToken: () -> Unit = {},
     onOpenTwoFactor: () -> Unit,
     onSignOutClick: () -> Unit,
     onShowMessage: (String) -> Unit
 ) {
     val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
     val scope = rememberCoroutineScope()
 
     val profile = (profileState as? UiState.Success)?.data
@@ -675,6 +687,160 @@ fun ProfileScreen(
                                 )
                                 Spacer(Modifier.width(6.dp))
                                 Text("Sign Out")
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Real-Time Alerts & Firebase Cloud Messaging Card
+            item {
+                var hasNotifPerm by remember {
+                    mutableStateOf(HavenlyNotificationHelper.hasNotificationPermission(context))
+                }
+                val notifPermissionLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.RequestPermission()
+                ) { granted ->
+                    hasNotifPerm = granted
+                    if (granted) {
+                        onToggleNotifications(true)
+                        onRefreshFcmToken()
+                    } else {
+                        onShowMessage("Notification permission denied. Grant permission in Android settings to receive push banners.")
+                    }
+                }
+                val alertsEnabled = profile?.notificationsEnabled ?: true
+                val activeFcmToken = profile?.fcmToken?.ifBlank { cachedFcmToken } ?: cachedFcmToken
+
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                    shape = RoundedCornerShape(24.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.NotificationsActive,
+                                    contentDescription = null,
+                                    tint = if (alertsEnabled && hasNotifPerm) TrustEmerald else AlertAmber,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Text(
+                                    text = "Real-Time Push Alerts (FCM)",
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                            }
+
+                            Switch(
+                                checked = alertsEnabled,
+                                onCheckedChange = { enabled ->
+                                    if (enabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !hasNotifPerm) {
+                                        notifPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                    } else {
+                                        onToggleNotifications(enabled)
+                                    }
+                                },
+                                modifier = Modifier.testTag("profile_notifications_switch")
+                            )
+                        }
+
+                        Text(
+                            text = "Receive instant alerts for incoming companion messages and booking/payment ledger updates via Firebase Cloud Messaging.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        if (!hasNotifPerm && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            Button(
+                                onClick = { notifPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 48.dp)
+                                    .testTag("grant_notifications_permission_button")
+                            ) {
+                                Text("Grant Notification Permission")
+                            }
+                        }
+
+                        Surface(
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = "FCM Device Registration Token",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = if (activeFcmToken.isNotBlank()) {
+                                        "${activeFcmToken.take(28)}…${activeFcmToken.takeLast(12)}"
+                                    } else {
+                                        "Pending Google Play Services / FCM registration"
+                                    },
+                                    style = MonoMetricStyle,
+                                    color = if (activeFcmToken.isNotBlank()) TrustEmerald else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = onRefreshFcmToken,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .heightIn(min = 48.dp)
+                                    .testTag("refresh_fcm_token_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Refresh,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text("Sync Token")
+                            }
+
+                            OutlinedButton(
+                                onClick = {
+                                    if (activeFcmToken.isNotBlank()) {
+                                        clipboardManager.setText(AnnotatedString(activeFcmToken))
+                                        onShowMessage("FCM token copied to clipboard.")
+                                    } else {
+                                        onShowMessage("FCM token not generated yet.")
+                                    }
+                                },
+                                enabled = activeFcmToken.isNotBlank(),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .heightIn(min = 48.dp)
+                                    .testTag("copy_fcm_token_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.ContentCopy,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text("Copy Token")
                             }
                         }
                     }

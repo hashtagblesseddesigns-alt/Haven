@@ -1,5 +1,6 @@
 package com.example
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -17,6 +18,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.data.ai.HavenlyAiService
 import com.example.data.repository.HavenlyRepository
+import com.example.notifications.HavenlyNotificationHelper
 import com.example.security.TwoFactorPreferences
 import com.example.security.configureAppCheck
 import com.example.ui.auth.HavenlyAuthScreen
@@ -29,23 +31,56 @@ import com.google.firebase.auth.auth
 import com.google.firebase.firestore.FirebaseFirestore
 
 class MainActivity : ComponentActivity() {
+    private val pendingNavDestination = mutableStateOf<String?>(null)
+    private val pendingCompanionId = mutableStateOf<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         // STEP 1: Configure App Check with launch intent before any UI or Firebase operations
         configureAppCheck(this, intent)
+        HavenlyNotificationHelper.ensureChannels(this)
+        handleNotificationIntent(intent)
 
         enableEdgeToEdge()
         setContent {
             HavenlyTheme {
-                AppContent()
+                AppContent(
+                    pendingNavDestination = pendingNavDestination.value,
+                    pendingCompanionId = pendingCompanionId.value,
+                    onConsumeNavExtras = {
+                        pendingNavDestination.value = null
+                        pendingCompanionId.value = null
+                    }
+                )
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleNotificationIntent(intent)
+    }
+
+    private fun handleNotificationIntent(intent: Intent?) {
+        val dest = intent?.getStringExtra(HavenlyNotificationHelper.EXTRA_NAV_DESTINATION)
+        val companionId = intent?.getStringExtra(HavenlyNotificationHelper.EXTRA_COMPANION_ID)
+        if (!dest.isNullOrBlank()) {
+            pendingNavDestination.value = dest
+        }
+        if (!companionId.isNullOrBlank()) {
+            pendingCompanionId.value = companionId
         }
     }
 }
 
 @Composable
-fun AppContent() {
+fun AppContent(
+    pendingNavDestination: String? = null,
+    pendingCompanionId: String? = null,
+    onConsumeNavExtras: () -> Unit = {}
+) {
     var currentUser by remember { mutableStateOf(Firebase.auth.currentUser) }
     DisposableEffect(Unit) {
         val listener = FirebaseAuth.AuthStateListener { auth ->
@@ -90,6 +125,9 @@ fun AppContent() {
             HavenlyAppShell(
                 currentUserId = uid,
                 viewModel = havenlyViewModel,
+                pendingNavDestination = pendingNavDestination,
+                pendingCompanionId = pendingCompanionId,
+                onConsumeNavExtras = onConsumeNavExtras,
                 onSignedOut = { currentUser = Firebase.auth.currentUser }
             )
         }

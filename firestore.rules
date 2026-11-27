@@ -54,6 +54,8 @@ service cloud.firestore {
              isValidCurrency(data.preferredCurrency) &&
              (!('wellnessFocus' in data) || (data.wellnessFocus is string && data.wellnessFocus.size() <= 300)) &&
              (!('avatarBase64' in data) || (data.avatarBase64 is string && data.avatarBase64.size() <= 80000)) &&
+             (!('fcmToken' in data) || (data.fcmToken is string && data.fcmToken.size() <= 512)) &&
+             (!('notificationsEnabled' in data) || data.notificationsEnabled is bool) &&
              isValidTimestamp(data.createdAt) &&
              isValidTimestamp(data.updatedAt);
     }
@@ -149,7 +151,7 @@ service cloud.firestore {
       allow create: if isValidId(userId) &&
                        (isOwner(userId) || isAdmin()) &&
                        incoming().keys().hasAll(['userId', 'displayName', 'role', 'verificationStatus', 'preferredCurrency', 'createdAt', 'updatedAt']) &&
-                       incoming().keys().hasOnly(['userId', 'displayName', 'role', 'verificationStatus', 'preferredCurrency', 'wellnessFocus', 'avatarBase64', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['userId', 'displayName', 'role', 'verificationStatus', 'preferredCurrency', 'wellnessFocus', 'avatarBase64', 'fcmToken', 'notificationsEnabled', 'createdAt', 'updatedAt']) &&
                        isValidUserProfile(incoming(), userId);
 
       allow update: if isValidId(userId) &&
@@ -157,7 +159,7 @@ service cloud.firestore {
                        isValidUserProfile(incoming(), userId) &&
                        incoming().userId == existing().userId &&
                        incoming().createdAt == existing().createdAt &&
-                       incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'role', 'verificationStatus', 'preferredCurrency', 'wellnessFocus', 'avatarBase64', 'updatedAt']);
+                       incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'role', 'verificationStatus', 'preferredCurrency', 'wellnessFocus', 'avatarBase64', 'fcmToken', 'notificationsEnabled', 'updatedAt']);
 
       allow delete: if isValidId(userId) && (isOwner(userId) || isAdmin());
 

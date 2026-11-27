@@ -91,13 +91,23 @@ test("Owner UserProfile: valid Kotlin create & update succeed; ghost fields & cr
     })
   );
 
-  // Valid partial update including displayName and avatarBase64
+  // Valid partial update including displayName, avatarBase64, and FCM settings
   await assertSucceeds(
     aliceDb.collection("users").doc(ALICE_UID).update({
       displayName: "Alice Moreau",
       avatarBase64: "/9j/4AAQSkZJRgABAQAAAQABAAD/",
+      fcmToken: "fcm_sample_token_1234567890",
+      notificationsEnabled: true,
       verificationStatus: "VERIFIED_2FA",
       preferredCurrency: "EUR",
+      updatedAt: new Date(Date.now() - 1000),
+    })
+  );
+
+  // Oversized fcmToken (> 512 chars) rejected
+  await assertFails(
+    aliceDb.collection("users").doc(ALICE_UID).update({
+      fcmToken: "T".repeat(513),
       updatedAt: new Date(Date.now() - 1000),
     })
   );

@@ -220,7 +220,9 @@ class HavenlyRepository(
         verificationTier: VerificationTier? = null,
         preferredCurrency: CurrencyCode? = null,
         wellnessFocus: String? = null,
-        avatarBase64: String? = null
+        avatarBase64: String? = null,
+        fcmToken: String? = null,
+        notificationsEnabled: Boolean? = null
     ): Result<Unit> {
         var path = "users"
         return try {
@@ -246,6 +248,14 @@ class HavenlyRepository(
                 val cleanAvatar = avatarBase64.trim()
                 require(cleanAvatar.length <= 80_000) { "Profile picture exceeds maximum encoded size." }
                 updates["avatarBase64"] = cleanAvatar
+            }
+            if (fcmToken != null) {
+                val cleanToken = fcmToken.trim()
+                require(cleanToken.length <= 512) { "FCM token exceeds maximum length." }
+                updates["fcmToken"] = cleanToken
+            }
+            if (notificationsEnabled != null) {
+                updates["notificationsEnabled"] = notificationsEnabled
             }
             docRef.update(updates).await()
             if (displayName != null || avatarBase64 != null) {

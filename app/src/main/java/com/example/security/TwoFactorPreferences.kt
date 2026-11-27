@@ -28,6 +28,7 @@ class TwoFactorPreferences(private val context: Context) {
     private val regRoleKey = stringPreferencesKey("pending_reg_role")
     private val regCurrencyKey = stringPreferencesKey("pending_reg_currency")
     private val regFocusKey = stringPreferencesKey("pending_reg_focus")
+    private val fcmTokenKey = stringPreferencesKey("fcm_registration_token")
 
     val hasConfiguredPin: Flow<Boolean> = context.havenlyDataStore.data.map { prefs ->
         !prefs[pinHashKey].isNullOrBlank()
@@ -35,6 +36,10 @@ class TwoFactorPreferences(private val context: Context) {
 
     val showCipherInspector: Flow<Boolean> = context.havenlyDataStore.data.map { prefs ->
         prefs[cipherInspectorKey] ?: false
+    }
+
+    val cachedFcmToken: Flow<String> = context.havenlyDataStore.data.map { prefs ->
+        prefs[fcmTokenKey].orEmpty()
     }
 
     suspend fun saveTwoFactorPin(pin: String) {
@@ -56,6 +61,13 @@ class TwoFactorPreferences(private val context: Context) {
     suspend fun setShowCipherInspector(enabled: Boolean) {
         context.havenlyDataStore.edit { prefs ->
             prefs[cipherInspectorKey] = enabled
+        }
+    }
+
+    suspend fun saveFcmToken(token: String) {
+        val clean = token.trim().take(512)
+        context.havenlyDataStore.edit { prefs ->
+            prefs[fcmTokenKey] = clean
         }
     }
 

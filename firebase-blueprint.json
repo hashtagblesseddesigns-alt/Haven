@@ -12,6 +12,8 @@
         "preferredCurrency": { "type": "string", "enum": ["USD", "EUR", "GBP", "JPY", "CAD"], "description": "Display currency for session rates and earnings." },
         "wellnessFocus": { "type": "string", "description": "User wellness companionship preferences for AI matchmaking." },
         "avatarBase64": { "type": "string", "description": "Compact Base64-encoded JPEG profile avatar thumbnail (max 80000 chars)." },
+        "fcmToken": { "type": "string", "description": "Firebase Cloud Messaging device registration token." },
+        "notificationsEnabled": { "type": "boolean", "description": "Whether real-time chat and payment alerts are enabled." },
         "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp on creation." },
         "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp on update." }
       },

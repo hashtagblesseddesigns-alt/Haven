@@ -17,19 +17,25 @@ import com.example.data.model.UserProfile
 import com.example.data.model.UserRole
 import com.example.data.model.VerificationTier
 import com.example.data.repository.HavenlyRepository
+import com.example.data.model.BookingStatus
 import com.example.security.MessageCrypto
 import com.example.security.TwoFactorPreferences
 import com.google.firebase.firestore.FirebaseFirestoreException
+import com.google.firebase.messaging.FirebaseMessaging
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 
 sealed interface UiState<out T> {
     data object Loading : UiState<Nothing>
@@ -42,6 +48,21 @@ sealed interface AiTaskState {
     data object Running : AiTaskState
     data class Success(val message: String) : AiTaskState
     data class Error(val message: String) : AiTaskState
+}
+
+sealed interface RealtimeAlertEvent {
+    data class ChatAlert(
+        val title: String,
+        val body: String,
+        val companionId: String,
+        val isEncrypted: Boolean
+    ) : RealtimeAlertEvent
+
+    data class PaymentAlert(
+        val title: String,
+        val body: String,
+        val bookingId: String
+    ) : RealtimeAlertEvent
 }
 
 data class DecryptedChatItem(
@@ -128,6 +149,9 @@ class HavenlyViewModel(
     val showCipherInspector: StateFlow<Boolean> = twoFactorPrefs.showCipherInspector
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), false)
 
+    val cachedFcmToken: StateFlow<String> = twoFactorPrefs.cachedFcmToken
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), "")
+
     private val _selectedCompanionId = MutableStateFlow(companions.first().id)
     val selectedCompanionId: StateFlow<String> = _selectedCompanionId.asStateFlow()
 
@@ -152,6 +176,9 @@ class HavenlyViewModel(
     private val _bannerFeedback = MutableStateFlow<String?>(null)
     val bannerFeedback: StateFlow<String?> = _bannerFeedback.asStateFlow()
 
+    private val _alertEvents = MutableSharedFlow<RealtimeAlertEvent>(extraBufferCapacity = 16)
+    val alertEvents: SharedFlow<RealtimeAlertEvent> = _alertEvents.asSharedFlow()
+
     init {
         viewModelScope.launch {
             val pending = twoFactorPrefs.consumePendingRegistration()
@@ -162,9 +189,162 @@ class HavenlyViewModel(
                 preferredCurrency = pending?.preferredCurrency ?: CurrencyCode.USD,
                 wellnessFocus = pending?.wellnessFocus?.takeIf { it.isNotBlank() }
                     ?: "Calm platonic companionship, mindful tea talks, and stress decompression"
-            ).onFailure { err ->
+            ).onSuccess {
+                syncFcmToken(showToastOnSuccess = false)
+            }.onFailure { err ->
                 _bannerFeedback.value = err.localizedMessage ?: "Failed to initialize profile."
             }
+        }
+
+        observeIncomingChatAlerts()
+        observeIncomingCipherAlerts()
+        observePaymentAndBookingAlerts()
+    }
+
+    private fun alertsEnabled(): Boolean =
+        (profileState.value as? UiState.Success)?.data?.notificationsEnabled ?: true
+
+    private fun observeIncomingChatAlerts() {
+        viewModelScope.launch {
+            var knownIds: MutableSet<String>? = null
+            liveChatsState.collect { state ->
+                if (state !is UiState.Success) return@collect
+                val items = state.data
+                val baseline = knownIds
+                if (baseline == null) {
+                    knownIds = items.mapNotNull { it.id.takeIf(String::isNotBlank) }.toMutableSet()
+                    return@collect
+                }
+                items.forEach { msg ->
+                    if (msg.id.isNotBlank() && baseline.add(msg.id)) {
+                        if (msg.senderRole == "COMPANION" && alertsEnabled()) {
+                            _alertEvents.tryEmit(
+                                RealtimeAlertEvent.ChatAlert(
+                                    title = "New message from ${msg.senderName.ifBlank { msg.companionName }}",
+                                    body = msg.text,
+                                    companionId = msg.companionId,
+                                    isEncrypted = false
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun observeIncomingCipherAlerts() {
+        viewModelScope.launch {
+            var knownIds: MutableSet<String>? = null
+            messagesState.collect { state ->
+                if (state !is UiState.Success) return@collect
+                val items = state.data
+                val baseline = knownIds
+                if (baseline == null) {
+                    knownIds = items.mapNotNull { it.id.takeIf(String::isNotBlank) }.toMutableSet()
+                    return@collect
+                }
+                items.forEach { msg ->
+                    if (msg.id.isNotBlank() && baseline.add(msg.id)) {
+                        if (msg.senderRole == "COMPANION" && alertsEnabled()) {
+                            _alertEvents.tryEmit(
+                                RealtimeAlertEvent.ChatAlert(
+                                    title = "Encrypted message from ${msg.companionName}",
+                                    body = msg.plaintext,
+                                    companionId = msg.companionId,
+                                    isEncrypted = true
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun observePaymentAndBookingAlerts() {
+        viewModelScope.launch {
+            var knownStatuses: MutableMap<String, String>? = null
+            bookingsState.collect { state ->
+                if (state !is UiState.Success) return@collect
+                val bookings = state.data
+                val baseline = knownStatuses
+                if (baseline == null) {
+                    knownStatuses = bookings.associate { it.id to it.status }.toMutableMap()
+                    return@collect
+                }
+                val currency = CurrencyCode.fromRaw(
+                    (profileState.value as? UiState.Success)?.data?.preferredCurrency
+                )
+                bookings.forEach { booking ->
+                    if (booking.id.isBlank()) return@forEach
+                    val previousStatus = baseline[booking.id]
+                    if (previousStatus == null) {
+                        baseline[booking.id] = booking.status
+                        if (alertsEnabled()) {
+                            _alertEvents.tryEmit(
+                                RealtimeAlertEvent.PaymentAlert(
+                                    title = "Session Booking Confirmed",
+                                    body = "${booking.companionName} • ${currency.formatFromUsdCents(booking.grossCentsUsd)} (${booking.scheduledLabel})",
+                                    bookingId = booking.id
+                                )
+                            )
+                        }
+                    } else if (previousStatus != booking.status) {
+                        baseline[booking.id] = booking.status
+                        if (alertsEnabled()) {
+                            val nextLabel = BookingStatus.fromRaw(booking.status).label
+                            _alertEvents.tryEmit(
+                                RealtimeAlertEvent.PaymentAlert(
+                                    title = "Payment Ledger: $nextLabel",
+                                    body = "${booking.companionName} (${booking.sessionTitle}) • Net ${currency.formatFromUsdCents((booking.grossCentsUsd - booking.taxWithheldCentsUsd).coerceAtLeast(0L))}",
+                                    bookingId = booking.id
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fun syncFcmToken(showToastOnSuccess: Boolean = true) {
+        viewModelScope.launch {
+            runCatching {
+                FirebaseMessaging.getInstance().token.await()
+            }.onSuccess { token ->
+                if (token.isNotBlank()) {
+                    twoFactorPrefs.saveFcmToken(token)
+                    repository.updateUserProfile(fcmToken = token)
+                        .onSuccess {
+                            if (showToastOnSuccess) {
+                                _bannerFeedback.value = "FCM device token synced for real-time alerts."
+                            }
+                        }
+                }
+            }.onFailure { err ->
+                Log.w(TAG, "Unable to fetch FCM token", err)
+                if (showToastOnSuccess) {
+                    _bannerFeedback.value = err.localizedMessage ?: "FCM token unavailable on this device."
+                }
+            }
+        }
+    }
+
+    fun setNotificationsEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            repository.updateUserProfile(notificationsEnabled = enabled)
+                .onSuccess {
+                    if (enabled) syncFcmToken(showToastOnSuccess = false)
+                    _bannerFeedback.value = if (enabled) {
+                        "Real-time chat & payment alerts enabled."
+                    } else {
+                        "Real-time alerts paused."
+                    }
+                }
+                .onFailure { err ->
+                    _bannerFeedback.value = err.localizedMessage ?: "Failed to update alert preferences."
+                }
         }
     }
 
