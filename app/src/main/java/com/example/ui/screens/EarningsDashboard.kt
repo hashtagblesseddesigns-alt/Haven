@@ -31,13 +31,19 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ReceiptLong
 import androidx.compose.material.icons.automirrored.rounded.ShowChart
+import androidx.compose.material.icons.rounded.ArrowDropDown
+import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.CalendarToday
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.Spa
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -57,6 +63,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -84,21 +91,19 @@ import com.example.ui.theme.TrustEmerald
 import com.example.ui.viewmodel.UiState
 import java.text.SimpleDateFormat
 import java.util.Calendar
-import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 import kotlin.math.roundToInt
 
-enum class DashboardRange(val label: String, val days: Int?) {
-    DAYS_7("7D", 7),
-    DAYS_14("14D", 14),
-    DAYS_30("30D", 30),
-    ALL("ALL", null)
+enum class DashboardRange(val label: String, val subtitlePrefix: String) {
+    CURRENT_WEEK("Current Week", "This week"),
+    CURRENT_MONTH("Current Month", "This month"),
+    CURRENT_YEAR("Current Year", "This year")
 }
 
 enum class DashboardTrendMode(val label: String) {
     CUMULATIVE("Cumulative Growth"),
-    DAILY("Daily Earnings")
+    DAILY("Period Breakdown")
 }
 
 data class EarningsTimePoint(
@@ -126,7 +131,9 @@ data class CompanionEarningsSummary(
 )
 
 data class EarningsDashboardAggregation(
+    val periodSubtitle: String,
     val points: List<EarningsTimePoint>,
+    val defaultSelectedIndex: Int,
     val totalGrossCentsUsd: Long,
     val totalTaxCentsUsd: Long,
     val totalNetCentsUsd: Long,
@@ -152,7 +159,7 @@ fun EarningsDashboard(
     val activeCurrency = CurrencyCode.fromRaw(profile?.preferredCurrency)
     val bookings = (bookingsState as? UiState.Success)?.data.orEmpty()
 
-    var selectedRange by rememberSaveable { mutableStateOf(DashboardRange.DAYS_14) }
+    var selectedRange by rememberSaveable { mutableStateOf(DashboardRange.CURRENT_MONTH) }
     var trendMode by rememberSaveable { mutableStateOf(DashboardTrendMode.CUMULATIVE) }
 
     val aggregation = remember(bookings, selectedRange) {
@@ -163,11 +170,11 @@ fun EarningsDashboard(
     }
 
     var selectedPointIndex by rememberSaveable(selectedRange) {
-        mutableIntStateOf((aggregation.points.lastIndex).coerceAtLeast(0))
+        mutableIntStateOf(aggregation.defaultSelectedIndex)
     }
     LaunchedEffect(aggregation.points.size) {
         if (aggregation.points.isNotEmpty() && selectedPointIndex !in aggregation.points.indices) {
-            selectedPointIndex = aggregation.points.lastIndex
+            selectedPointIndex = aggregation.defaultSelectedIndex.coerceIn(0, aggregation.points.lastIndex)
         }
     }
 
@@ -224,7 +231,7 @@ fun EarningsDashboard(
                 }
             }
 
-            // 1. Hero Aggregated Earnings Summary Card
+            // 1. Hero Aggregated Earnings Summary Card with Period Filter Dropdown
             item {
                 Card(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
@@ -242,7 +249,8 @@ fun EarningsDashboard(
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.weight(1f)
                             ) {
                                 Icon(
                                     imageVector = Icons.AutoMirrored.Rounded.ShowChart,
@@ -250,34 +258,26 @@ fun EarningsDashboard(
                                     tint = TrustEmerald,
                                     modifier = Modifier.size(22.dp)
                                 )
-                                Text(
-                                    text = "Earnings Over Time",
-                                    style = MaterialTheme.typography.titleMedium
-                                )
-                            }
-
-                            Surface(
-                                color = TrustEmerald.copy(alpha = 0.16f),
-                                shape = RoundedCornerShape(50)
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(5.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(7.dp)
-                                            .clip(CircleShape)
-                                            .background(TrustEmerald)
+                                Column {
+                                    Text(
+                                        text = "Earnings Over Time",
+                                        style = MaterialTheme.typography.titleMedium
                                     )
                                     Text(
-                                        text = "Firestore Live",
+                                        text = aggregation.periodSubtitle,
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = TrustEmerald
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.testTag("dashboard_period_subtitle")
                                     )
                                 }
                             }
+
+                            Spacer(Modifier.width(8.dp))
+
+                            EarningsPeriodFilterDropdown(
+                                selectedRange = selectedRange,
+                                onSelectRange = { range -> selectedRange = range }
+                            )
                         }
 
                         Text(
@@ -344,7 +344,7 @@ fun EarningsDashboard(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column {
+                            Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = "Revenue Trajectory",
                                     style = MaterialTheme.typography.titleMedium
@@ -356,13 +356,25 @@ fun EarningsDashboard(
                                 )
                             }
 
-                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                DashboardRange.entries.forEach { range ->
-                                    FilterChip(
-                                        selected = selectedRange == range,
-                                        onClick = { selectedRange = range },
-                                        label = { Text(range.label) },
-                                        modifier = Modifier.testTag("dashboard_range_${range.label.lowercase()}")
+                            Surface(
+                                color = TrustEmerald.copy(alpha = 0.14f),
+                                shape = RoundedCornerShape(50)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(7.dp)
+                                            .clip(CircleShape)
+                                            .background(TrustEmerald)
+                                    )
+                                    Text(
+                                        text = "Firestore Live",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = TrustEmerald
                                     )
                                 }
                             }
@@ -373,10 +385,15 @@ fun EarningsDashboard(
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             DashboardTrendMode.entries.forEach { mode ->
+                                val label = if (mode == DashboardTrendMode.DAILY) {
+                                    if (selectedRange == DashboardRange.CURRENT_YEAR) "Monthly Earnings" else "Daily Earnings"
+                                } else {
+                                    mode.label
+                                }
                                 FilterChip(
                                     selected = trendMode == mode,
                                     onClick = { trendMode = mode },
-                                    label = { Text(mode.label) },
+                                    label = { Text(label) },
                                     modifier = Modifier.testTag("dashboard_mode_${mode.name.lowercase()}")
                                 )
                             }
@@ -393,7 +410,10 @@ fun EarningsDashboard(
                         }
 
                         if (aggregation.totalSessions == 0) {
-                            DashboardEmptyChartState(onOpenLounge = onOpenLounge)
+                            DashboardEmptyChartState(
+                                periodLabel = selectedRange.label,
+                                onOpenLounge = onOpenLounge
+                            )
                         } else {
                             EarningsOverTimeLineChart(
                                 points = aggregation.points,
@@ -407,6 +427,7 @@ fun EarningsDashboard(
                                 SelectedTimePointCard(
                                     point = selectedPoint,
                                     trendMode = trendMode,
+                                    isYearly = selectedRange == DashboardRange.CURRENT_YEAR,
                                     currency = activeCurrency
                                 )
                             }
@@ -444,7 +465,7 @@ fun EarningsDashboard(
 
                         if (aggregation.companionBreakdown.isEmpty()) {
                             Text(
-                                text = "Book a companion session from the Sanctuary Lounge to populate real-time companion earnings shares.",
+                                text = "Book a companion session from the Sanctuary Lounge to populate companion revenue shares for ${selectedRange.subtitlePrefix.lowercase()}.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -532,6 +553,85 @@ fun EarningsDashboard(
 }
 
 @Composable
+private fun EarningsPeriodFilterDropdown(
+    selectedRange: DashboardRange,
+    onSelectRange: (DashboardRange) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val arrowRotation by animateFloatAsState(
+        targetValue = if (expanded) 180f else 0f,
+        animationSpec = tween(durationMillis = 180),
+        label = "dropdown_arrow_rotation"
+    )
+
+    Box {
+        FilledTonalButton(
+            onClick = { expanded = true },
+            shape = RoundedCornerShape(14.dp),
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+            modifier = Modifier
+                .heightIn(min = 48.dp)
+                .semantics {
+                    contentDescription = "Filter earnings timeframe: ${selectedRange.label}"
+                }
+                .testTag("dashboard_period_dropdown_button")
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.CalendarMonth,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                text = selectedRange.label,
+                style = MaterialTheme.typography.labelLarge,
+                maxLines = 1
+            )
+            Spacer(Modifier.width(2.dp))
+            Icon(
+                imageVector = Icons.Rounded.ArrowDropDown,
+                contentDescription = null,
+                modifier = Modifier
+                    .size(20.dp)
+                    .rotate(arrowRotation)
+            )
+        }
+
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.testTag("dashboard_period_dropdown_menu")
+        ) {
+            DashboardRange.entries.forEach { range ->
+                val isSelected = range == selectedRange
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            text = range.label,
+                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                        )
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = if (isSelected) Icons.Rounded.Check else Icons.Rounded.CalendarToday,
+                            contentDescription = null,
+                            tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    },
+                    onClick = {
+                        expanded = false
+                        onSelectRange(range)
+                    },
+                    modifier = Modifier.testTag("dashboard_period_option_${range.name.lowercase()}")
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun EarningsOverTimeLineChart(
     points: List<EarningsTimePoint>,
     trendMode: DashboardTrendMode,
@@ -602,7 +702,7 @@ private fun EarningsOverTimeLineChart(
                 .fillMaxWidth()
                 .height(210.dp)
                 .semantics {
-                    contentDescription = "Earnings over time line chart across ${points.size} days"
+                    contentDescription = "Earnings over time line chart across ${points.size} intervals"
                 }
                 .pointerInput(points) {
                     detectTapGestures { offset ->
@@ -800,6 +900,7 @@ private fun EarningsOverTimeLineChart(
 private fun SelectedTimePointCard(
     point: EarningsTimePoint,
     trendMode: DashboardTrendMode,
+    isYearly: Boolean,
     currency: CurrencyCode
 ) {
     val netValue = if (trendMode == DashboardTrendMode.CUMULATIVE) {
@@ -817,6 +918,8 @@ private fun SelectedTimePointCard(
     } else {
         point.dailyTaxCentsUsd
     }
+
+    val periodNoun = if (isYearly) "Monthly" else "Daily"
 
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -861,12 +964,12 @@ private fun SelectedTimePointCard(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 DashboardStatColumn(
-                    label = if (trendMode == DashboardTrendMode.CUMULATIVE) "Cumulative Net" else "Daily Net",
+                    label = if (trendMode == DashboardTrendMode.CUMULATIVE) "Cumulative Net" else "$periodNoun Net",
                     value = currency.formatFromUsdCents(netValue),
                     color = TrustEmerald
                 )
                 DashboardStatColumn(
-                    label = if (trendMode == DashboardTrendMode.CUMULATIVE) "Cumulative Gross" else "Daily Gross",
+                    label = if (trendMode == DashboardTrendMode.CUMULATIVE) "Cumulative Gross" else "$periodNoun Gross",
                     value = currency.formatFromUsdCents(grossValue),
                     color = ChampagneSecondary
                 )
@@ -881,7 +984,10 @@ private fun SelectedTimePointCard(
 }
 
 @Composable
-private fun DashboardEmptyChartState(onOpenLounge: () -> Unit) {
+private fun DashboardEmptyChartState(
+    periodLabel: String,
+    onOpenLounge: () -> Unit
+) {
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         shape = RoundedCornerShape(18.dp),
@@ -903,11 +1009,11 @@ private fun DashboardEmptyChartState(onOpenLounge: () -> Unit) {
                 modifier = Modifier.size(34.dp)
             )
             Text(
-                text = "No Firestore sessions recorded yet",
+                text = "No sessions recorded for $periodLabel",
                 style = MaterialTheme.typography.titleSmall
             )
             Text(
-                text = "Book a wellness companionship session in the Sanctuary Lounge to watch your earnings curve update live.",
+                text = "Book a wellness companionship session in the Sanctuary Lounge or select another timeframe to inspect your earnings curve.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -967,88 +1073,159 @@ internal fun aggregateSessionEarningsTimeline(
     nowMillis: Long = System.currentTimeMillis(),
     timeZone: TimeZone = TimeZone.getDefault()
 ): EarningsDashboardAggregation {
-    val keyFmt = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply { this.timeZone = timeZone }
-    val shortFmt = SimpleDateFormat("MMM d", Locale.US).apply { this.timeZone = timeZone }
-    val fullFmt = SimpleDateFormat("EEE, MMM d", Locale.US).apply { this.timeZone = timeZone }
+    val nowCal = Calendar.getInstance(timeZone).apply { timeInMillis = nowMillis }
 
-    val endCal = Calendar.getInstance(timeZone).apply {
-        timeInMillis = nowMillis
+    val dayKeyFmt = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply { this.timeZone = timeZone }
+    val monthKeyFmt = SimpleDateFormat("yyyy-MM", Locale.US).apply { this.timeZone = timeZone }
+    val shortDayFmt = SimpleDateFormat("EEE", Locale.US).apply { this.timeZone = timeZone }
+    val shortDateFmt = SimpleDateFormat("MMM d", Locale.US).apply { this.timeZone = timeZone }
+    val fullDayFmt = SimpleDateFormat("EEE, MMM d", Locale.US).apply { this.timeZone = timeZone }
+    val monthShortFmt = SimpleDateFormat("MMM", Locale.US).apply { this.timeZone = timeZone }
+    val monthFullFmt = SimpleDateFormat("MMMM yyyy", Locale.US).apply { this.timeZone = timeZone }
+    val yearFmt = SimpleDateFormat("yyyy", Locale.US).apply { this.timeZone = timeZone }
+
+    val todayKey = dayKeyFmt.format(nowCal.time)
+    val currentMonthKey = monthKeyFmt.format(nowCal.time)
+
+    val startCal = (nowCal.clone() as Calendar).apply {
         set(Calendar.HOUR_OF_DAY, 0)
         set(Calendar.MINUTE, 0)
         set(Calendar.SECOND, 0)
         set(Calendar.MILLISECOND, 0)
     }
-    val todayKey = keyFmt.format(endCal.time)
 
-    val dayCount = when (val fixedDays = range.days) {
-        null -> {
-            val earliestMs = bookings.mapNotNull { it.createdAt?.toDate()?.time }.minOrNull()
-            if (earliestMs == null) {
-                7
-            } else {
-                val startCal = Calendar.getInstance(timeZone).apply {
-                    timeInMillis = earliestMs
-                    set(Calendar.HOUR_OF_DAY, 0)
-                    set(Calendar.MINUTE, 0)
-                    set(Calendar.SECOND, 0)
-                    set(Calendar.MILLISECOND, 0)
-                }
-                val diffDays = ((endCal.timeInMillis - startCal.timeInMillis) / 86_400_000L).toInt() + 1
-                diffDays.coerceIn(7, 90)
-            }
+    val endExclusiveCal: Calendar
+    val periodSubtitle: String
+    val defaultSelectedIndex: Int
+    val isYearly = range == DashboardRange.CURRENT_YEAR
+
+    when (range) {
+        DashboardRange.CURRENT_WEEK -> {
+            val dow = startCal.get(Calendar.DAY_OF_WEEK)
+            val firstDow = startCal.firstDayOfWeek
+            val daysSinceWeekStart = (dow - firstDow + 7) % 7
+            startCal.add(Calendar.DAY_OF_YEAR, -daysSinceWeekStart)
+            endExclusiveCal = (startCal.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, 7) }
+            val lastDayCal = (startCal.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, 6) }
+            periodSubtitle = "${shortDateFmt.format(startCal.time)} – ${shortDateFmt.format(lastDayCal.time)}"
+            defaultSelectedIndex = daysSinceWeekStart.coerceIn(0, 6)
         }
-        else -> fixedDays.coerceIn(1, 90)
+
+        DashboardRange.CURRENT_MONTH -> {
+            startCal.set(Calendar.DAY_OF_MONTH, 1)
+            val daysInMonth = startCal.getActualMaximum(Calendar.DAY_OF_MONTH)
+            endExclusiveCal = (startCal.clone() as Calendar).apply { add(Calendar.MONTH, 1) }
+            periodSubtitle = monthFullFmt.format(startCal.time)
+            defaultSelectedIndex = (nowCal.get(Calendar.DAY_OF_MONTH) - 1).coerceIn(0, daysInMonth - 1)
+        }
+
+        DashboardRange.CURRENT_YEAR -> {
+            startCal.set(Calendar.MONTH, Calendar.JANUARY)
+            startCal.set(Calendar.DAY_OF_MONTH, 1)
+            endExclusiveCal = (startCal.clone() as Calendar).apply { add(Calendar.YEAR, 1) }
+            periodSubtitle = "${yearFmt.format(startCal.time)} Year-to-Date"
+            defaultSelectedIndex = nowCal.get(Calendar.MONTH).coerceIn(0, 11)
+        }
     }
 
-    val startCal = (endCal.clone() as Calendar).apply {
-        add(Calendar.DAY_OF_YEAR, -(dayCount - 1))
-    }
     val windowStartMs = startCal.timeInMillis
+    val windowEndExclusiveMs = endExclusiveCal.timeInMillis
 
     val bookingsInRange = bookings.filter { booking ->
         val createdMs = booking.createdAt?.toDate()?.time ?: nowMillis
-        range.days == null || createdMs >= windowStartMs
-    }
-
-    val bookingsByDay = bookingsInRange.groupBy { booking ->
-        booking.createdAt?.toDate()?.let { keyFmt.format(it) } ?: todayKey
+        createdMs >= windowStartMs && createdMs < windowEndExclusiveMs
     }
 
     var runningGross = 0L
     var runningTax = 0L
     var runningNet = 0L
 
-    val points = (0 until dayCount).map { offset ->
-        val dayCal = (startCal.clone() as Calendar).apply {
-            add(Calendar.DAY_OF_YEAR, offset)
+    val points = if (isYearly) {
+        val bookingsByMonth = bookingsInRange.groupBy { booking ->
+            booking.createdAt?.toDate()?.let { monthKeyFmt.format(it) } ?: currentMonthKey
         }
-        val date = dayCal.time
-        val key = keyFmt.format(date)
-        val dayBookings = bookingsByDay[key].orEmpty()
+        (0 until 12).map { monthOffset ->
+            val monthCal = (startCal.clone() as Calendar).apply {
+                add(Calendar.MONTH, monthOffset)
+            }
+            val date = monthCal.time
+            val key = monthKeyFmt.format(date)
+            val bucketBookings = bookingsByMonth[key].orEmpty()
 
-        val dailyGross = dayBookings.sumOf { it.grossCentsUsd }
-        val dailyTax = dayBookings.sumOf { it.taxWithheldCentsUsd }
-        val dailyNet = (dailyGross - dailyTax).coerceAtLeast(0L)
-        val dailyMinutes = dayBookings.sumOf { it.durationMinutes }
+            val bucketGross = bucketBookings.sumOf { it.grossCentsUsd }
+            val bucketTax = bucketBookings.sumOf { it.taxWithheldCentsUsd }
+            val bucketNet = (bucketGross - bucketTax).coerceAtLeast(0L)
+            val bucketMinutes = bucketBookings.sumOf { it.durationMinutes }
 
-        runningGross += dailyGross
-        runningTax += dailyTax
-        runningNet += dailyNet
+            runningGross += bucketGross
+            runningTax += bucketTax
+            runningNet += bucketNet
 
-        val isToday = offset == dayCount - 1
-        EarningsTimePoint(
-            dayKey = key,
-            shortLabel = if (isToday) "Today" else shortFmt.format(date),
-            fullDateLabel = if (isToday) "Today • ${fullFmt.format(date)}" else fullFmt.format(date),
-            dailyGrossCentsUsd = dailyGross,
-            dailyTaxCentsUsd = dailyTax,
-            dailyNetCentsUsd = dailyNet,
-            cumulativeGrossCentsUsd = runningGross,
-            cumulativeTaxCentsUsd = runningTax,
-            cumulativeNetCentsUsd = runningNet,
-            sessionCount = dayBookings.size,
-            sessionMinutes = dailyMinutes
-        )
+            val isCurrentMonth = key == currentMonthKey
+            EarningsTimePoint(
+                dayKey = key,
+                shortLabel = monthShortFmt.format(date),
+                fullDateLabel = if (isCurrentMonth) {
+                    "${monthFullFmt.format(date)} (Current)"
+                } else {
+                    monthFullFmt.format(date)
+                },
+                dailyGrossCentsUsd = bucketGross,
+                dailyTaxCentsUsd = bucketTax,
+                dailyNetCentsUsd = bucketNet,
+                cumulativeGrossCentsUsd = runningGross,
+                cumulativeTaxCentsUsd = runningTax,
+                cumulativeNetCentsUsd = runningNet,
+                sessionCount = bucketBookings.size,
+                sessionMinutes = bucketMinutes
+            )
+        }
+    } else {
+        val dayCount = if (range == DashboardRange.CURRENT_WEEK) {
+            7
+        } else {
+            startCal.getActualMaximum(Calendar.DAY_OF_MONTH)
+        }
+        val bookingsByDay = bookingsInRange.groupBy { booking ->
+            booking.createdAt?.toDate()?.let { dayKeyFmt.format(it) } ?: todayKey
+        }
+        (0 until dayCount).map { offset ->
+            val dayCal = (startCal.clone() as Calendar).apply {
+                add(Calendar.DAY_OF_YEAR, offset)
+            }
+            val date = dayCal.time
+            val key = dayKeyFmt.format(date)
+            val dayBookings = bookingsByDay[key].orEmpty()
+
+            val dailyGross = dayBookings.sumOf { it.grossCentsUsd }
+            val dailyTax = dayBookings.sumOf { it.taxWithheldCentsUsd }
+            val dailyNet = (dailyGross - dailyTax).coerceAtLeast(0L)
+            val dailyMinutes = dayBookings.sumOf { it.durationMinutes }
+
+            runningGross += dailyGross
+            runningTax += dailyTax
+            runningNet += dailyNet
+
+            val isToday = key == todayKey
+            val shortLabel = when {
+                isToday -> "Today"
+                range == DashboardRange.CURRENT_WEEK -> shortDayFmt.format(date)
+                else -> shortDateFmt.format(date)
+            }
+            EarningsTimePoint(
+                dayKey = key,
+                shortLabel = shortLabel,
+                fullDateLabel = if (isToday) "Today • ${fullDayFmt.format(date)}" else fullDayFmt.format(date),
+                dailyGrossCentsUsd = dailyGross,
+                dailyTaxCentsUsd = dailyTax,
+                dailyNetCentsUsd = dailyNet,
+                cumulativeGrossCentsUsd = runningGross,
+                cumulativeTaxCentsUsd = runningTax,
+                cumulativeNetCentsUsd = runningNet,
+                sessionCount = dayBookings.size,
+                sessionMinutes = dailyMinutes
+            )
+        }
     }
 
     val totalGross = bookingsInRange.sumOf { it.grossCentsUsd }
@@ -1085,7 +1262,9 @@ internal fun aggregateSessionEarningsTimeline(
         .sortedByDescending { it.netCentsUsd }
 
     return EarningsDashboardAggregation(
+        periodSubtitle = periodSubtitle,
         points = points,
+        defaultSelectedIndex = defaultSelectedIndex,
         totalGrossCentsUsd = totalGross,
         totalTaxCentsUsd = totalTax,
         totalNetCentsUsd = totalNet,
